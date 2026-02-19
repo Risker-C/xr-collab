@@ -1,0 +1,21 @@
+{
+  "name": "webxr-realtime-collaboration-platform",
+  "version": "1.0.0",
+  "description": "Production-grade WebXR real-time collaboration platform with distributed Python workers",
+  "main": "backend/server.js",
+  "scripts": {
+    "start": "node backend/server.js",
+    "dev": "nodemon backend/server.js"
+  },
+  "keywords": ["webxr", "threejs", "socketio", "collaboration", "ar", "vr", "xr"],
+  "author": "Ikaros",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "socket.io": "^4.6.1",
+    "cors": "^2.8.5"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  }
+}
