@@ -3,7 +3,9 @@
 Production-grade AR/VR/XR collaboration platform with distributed Python workers.
 
 [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FRisker-C%2Fxr-collab&root-directory=frontend)
-[![Deploy on Railway](https://railway.app/button.svg)](https://railway.app/new/template?template=https%3A%2F%2Fgithub.com%2FRisker-C%2Fxr-collab)
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/Risker-C/xr-collab)
+
+**部署指南**: [Render部署](DEPLOY_RENDER.md) | [完整部署指南](DEPLOYMENT_GUIDE.md) | [快速开始](DEPLOY_NOW.md)
 
 ## ✅ **STATUS: Complete & Production Ready!**
 
