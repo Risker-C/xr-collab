@@ -161,7 +161,7 @@ function onWindowResize() {
 
 // Socket.IO connection
 function initSocket() {
-    socket = io('http://localhost:3001');
+    socket = io('https://xr-collab-backend.onrender.com');
 
     socket.on('connect', () => {
         updateStatus('Connected', true);
