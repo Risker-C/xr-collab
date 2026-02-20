@@ -192,7 +192,8 @@ io.on("connection", (socket) => {
   socket.on("object-create", async (data) => {
     socket.rooms.forEach(async room => {
       if (room !== socket.id) {
-        socket.to(room).emit("object-created", data);
+        // 广播给房间内所有人（包括自己）
+        io.to(room).emit("object-created", data);
         await roomManager.addObject(room, data);
         await redis.recordEvent(room, { type: 'object-create', userId: socket.userId, ...data });
       }

@@ -295,13 +295,18 @@ function createCube() {
         return;
     }
     const pos = camera.position;
-    console.log('发送创建方块事件', pos);
-    socket.emit('object-create', {
+    const objectData = {
         type: 'cube',
         position: { x: pos.x, y: pos.y - 1, z: pos.z - 2 },
         color: 0xff0000
-    });
-    alert('方块已创建！');
+    };
+    console.log('发送创建方块事件', pos);
+    
+    // 立即在本地渲染
+    createObject(objectData);
+    
+    // 广播给其他用户
+    socket.emit('object-create', objectData);
 }
 
 function createSphere() {
@@ -315,13 +320,18 @@ function createSphere() {
         return;
     }
     const pos = camera.position;
-    console.log('发送创建球体事件', pos);
-    socket.emit('object-create', {
+    const objectData = {
         type: 'sphere',
         position: { x: pos.x, y: pos.y - 1, z: pos.z - 2 },
         color: 0x00ff00
-    });
-    alert('球体已创建！');
+    };
+    console.log('发送创建球体事件', pos);
+    
+    // 立即在本地渲染
+    createObject(objectData);
+    
+    // 广播给其他用户
+    socket.emit('object-create', objectData);
 }
 
 // Worker Integration
