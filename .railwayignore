@@ -1,0 +1,10 @@
+node_modules
+.git
+.env
+*.log
+frontend
+DEPLOY.md
+QUICKSTART.md
+USAGE.md
+PROJECT_SUMMARY.md
+README.md
