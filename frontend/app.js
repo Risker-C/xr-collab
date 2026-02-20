@@ -285,21 +285,43 @@ function createObject(data) {
 }
 
 function createCube() {
+    console.log('创建方块按钮被点击');
+    if (!socket || !socket.connected) {
+        alert('未连接到服务器，请稍候重试');
+        return;
+    }
+    if (!camera) {
+        alert('场景未初始化');
+        return;
+    }
     const pos = camera.position;
+    console.log('发送创建方块事件', pos);
     socket.emit('object-create', {
         type: 'cube',
         position: { x: pos.x, y: pos.y - 1, z: pos.z - 2 },
         color: 0xff0000
     });
+    alert('方块已创建！');
 }
 
 function createSphere() {
+    console.log('创建球体按钮被点击');
+    if (!socket || !socket.connected) {
+        alert('未连接到服务器，请稍候重试');
+        return;
+    }
+    if (!camera) {
+        alert('场景未初始化');
+        return;
+    }
     const pos = camera.position;
+    console.log('发送创建球体事件', pos);
     socket.emit('object-create', {
         type: 'sphere',
         position: { x: pos.x, y: pos.y - 1, z: pos.z - 2 },
         color: 0x00ff00
     });
+    alert('球体已创建！');
 }
 
 // Worker Integration
