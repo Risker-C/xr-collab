@@ -385,3 +385,9 @@ window.addEventListener('DOMContentLoaded', () => {
     initScene();
     initSocket();
 });
+
+// 暴露函数到全局作用域供HTML调用
+window.joinRoom = joinRoom;
+window.createCube = createCube;
+window.createSphere = createSphere;
+window.submitWorkerTask = submitWorkerTask;
