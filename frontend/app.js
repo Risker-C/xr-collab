@@ -209,10 +209,12 @@ function initSocket() {
 }
 
 function joinRoom() {
-    const username = document.getElementById('username').value || 'User';
-    const roomId = document.getElementById('roomId').value || 'lobby';
+    const username = document.getElementById('username').value || '用户';
+    const roomId = document.getElementById('roomId').value || '大厅';
     
     currentRoom = roomId;
+    
+    // 直接加入房间，不需要认证
     socket.emit('join-room', { roomId, username });
     
     document.getElementById('join-panel').style.display = 'none';

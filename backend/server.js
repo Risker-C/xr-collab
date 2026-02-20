@@ -105,8 +105,31 @@ app.get("/api/health", (req, res) => {
   });
 });
 
-// Socket.IO with auth
-io.use(authMiddleware);
+// Socket.IO with optional auth (allow anonymous)
+io.use((socket, next) => {
+  const token = socket.handshake.auth.token;
+  
+  if (!token) {
+    // 允许匿名连接，生成临时用户
+    socket.userId = `guest_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    socket.username = socket.handshake.auth.username || `访客_${socket.id.slice(0, 4)}`;
+    return next();
+  }
+  
+  // 如果有token，验证它
+  try {
+    const jwt = require('jsonwebtoken');
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'xr-collab-secret');
+    socket.userId = decoded.userId;
+    socket.username = decoded.username;
+    next();
+  } catch (err) {
+    // Token无效，仍然允许作为访客
+    socket.userId = `guest_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    socket.username = `访客_${socket.id.slice(0, 4)}`;
+    next();
+  }
+});
 
 io.on("connection", (socket) => {
   console.log(`✅ ${socket.username} connected`);
