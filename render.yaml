@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: xr-collab-backend
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: node backend/server.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: JWT_SECRET
+        generateValue: true
+      - key: RAILWAY_WORKER_URL
+        value: https://lightweight-distributed-ai-production.up.railway.app
+      - key: KOYEB_WORKER_URL
+        value: https://naughty-carina-risker666-8ce36d54.koyeb.app
