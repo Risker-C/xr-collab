@@ -2,9 +2,14 @@
 
 Production-grade AR/VR/XR collaboration platform with distributed Python workers.
 
-## ✅ **STATUS: Backend Complete!**
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FRisker-C%2Fxr-collab&root-directory=frontend)
+[![Deploy on Railway](https://railway.app/button.svg)](https://railway.app/new/template?template=https%3A%2F%2Fgithub.com%2FRisker-C%2Fxr-collab)
 
-Backend fully implemented with JWT auth, Worker bridge, and Redis persistence.
+## ✅ **STATUS: Complete & Production Ready!**
+
+Full-stack WebXR collaboration platform with multi-agent development, ready for deployment.
+
+**Quick Start**: See [DEPLOY_NOW.md](DEPLOY_NOW.md) for 5-minute deployment guide.
 
 ## Architecture
 
@@ -19,9 +24,10 @@ Backend fully implemented with JWT auth, Worker bridge, and Redis persistence.
 ### Frontend (Three.js + WebXR)
 - ✅ 3D scene rendering
 - ✅ Real-time position sync
-- 🔄 Avatar system (in progress)
-- 🔄 XR interaction tools (in progress)
-- 🔄 Collaboration UI (in progress)
+- ✅ Avatar system (head, body, nametag)
+- ✅ XR controllers (dual-hand interaction)
+- ✅ Collaboration UI (user list, controls)
+- ✅ Worker integration (real-time results)
 
 ### Workers (Python - Railway + Koyeb)
 - Railway: https://lightweight-distributed-ai-production.up.railway.app
