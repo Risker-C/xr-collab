@@ -4,203 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>WebXR 实时协作平台</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: "Microsoft YaHei", Arial, sans-serif; overflow: hidden; }
-        #canvas-container { width: 100vw; height: 100vh; }
-        
-        #ui-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            pointer-events: none;
-        }
-        
-        #join-panel {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background: rgba(0,0,0,0.9);
-            padding: 40px;
-            border-radius: 15px;
-            pointer-events: all;
-            color: white;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.5);
-        }
-        
-        #join-panel h2 {
-            margin-bottom: 20px;
-            text-align: center;
-            font-size: 24px;
-        }
-        
-        #join-panel input {
-            display: block;
-            width: 280px;
-            margin: 15px 0;
-            padding: 12px;
-            border: 2px solid #4CAF50;
-            border-radius: 8px;
-            font-size: 16px;
-            background: rgba(255,255,255,0.1);
-            color: white;
-        }
-        
-        #join-panel input::placeholder {
-            color: rgba(255,255,255,0.6);
-        }
-        
-        #join-panel button {
-            width: 100%;
-            padding: 15px;
-            background: #4CAF50;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-            font-weight: bold;
-            font-size: 18px;
-            color: white;
-            margin-top: 10px;
-            transition: background 0.3s;
-        }
-        
-        #join-panel button:hover {
-            background: #45a049;
-        }
-        
-        #controls {
-            position: absolute;
-            top: 20px;
-            left: 20px;
-            background: rgba(0,0,0,0.8);
-            padding: 20px;
-            border-radius: 10px;
-            pointer-events: all;
-            display: none;
-            color: white;
-            min-width: 180px;
-        }
-        
-        #controls h3 {
-            margin-bottom: 15px;
-            font-size: 18px;
-        }
-        
-        #controls button {
-            display: block;
-            width: 100%;
-            margin: 8px 0;
-            padding: 10px;
-            background: #4CAF50;
-            color: white;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 14px;
-            transition: background 0.3s;
-        }
-        
-        #controls button:hover { 
-            background: #45a049;
-            transform: translateY(-2px);
-        }
-        
-        #controls hr {
-            margin: 15px 0;
-            border: none;
-            border-top: 1px solid rgba(255,255,255,0.3);
-        }
-        
-        #controls h4 {
-            margin: 10px 0;
-            font-size: 14px;
-            color: #aaa;
-        }
-        
-        #status {
-            position: absolute;
-            top: 20px;
-            right: 20px;
-            padding: 12px 24px;
-            border-radius: 8px;
-            pointer-events: all;
-            font-weight: bold;
-            font-size: 14px;
-        }
-        
-        #status.connected { 
-            background: #4CAF50; 
-            color: white;
-        }
-        
-        #status.disconnected { 
-            background: #f44336; 
-            color: white;
-        }
-        
-        #users-panel {
-            position: absolute;
-            bottom: 20px;
-            left: 20px;
-            background: rgba(0,0,0,0.8);
-            padding: 20px;
-            border-radius: 10px;
-            pointer-events: all;
-            color: white;
-            max-width: 250px;
-        }
-        
-        #users-panel h4 {
-            margin-bottom: 12px;
-            font-size: 16px;
-        }
-        
-        #users-list {
-            list-style: none;
-            margin-top: 10px;
-        }
-        
-        #users-list li {
-            padding: 8px 0;
-            border-bottom: 1px solid rgba(255,255,255,0.2);
-            font-size: 14px;
-        }
-        
-        #users-list li:last-child {
-            border-bottom: none;
-        }
-        
-        #worker-result {
-            position: absolute;
-            bottom: 20px;
-            right: 20px;
-            background: rgba(0,0,0,0.9);
-            padding: 20px;
-            border-radius: 10px;
-            pointer-events: all;
-            color: white;
-            max-width: 450px;
-            display: none;
-        }
-        
-        #worker-result strong {
-            font-size: 16px;
-            color: #4CAF50;
-        }
-        
-        #worker-result pre {
-            background: rgba(255,255,255,0.1);
-            padding: 12px;
-            border-radius: 6px;
-            margin-top: 10px;
-            overflow-x: auto;
-            font-size: 13px;
-            line-height: 1.5;
-        }
-    </style>
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <div id="canvas-container"></div>
@@ -215,15 +19,100 @@
         
         <div id="controls">
             <h3>🎨 控制面板</h3>
-            <button onclick="createCube()">创建方块</button>
-            <button onclick="createSphere()">创建球体</button>
+            
+            <h4>📦 创建形状</h4>
+            <button onclick="createCube()">🟦 方块 (1)</button>
+            <button onclick="createSphere()">🔵 球体 (2)</button>
+            <button onclick="createCylinder()">🔶 圆柱 (3)</button>
+            <button onclick="createTorus()">🍩 圆环 (4)</button>
+            <button onclick="createPyramid()">🔺 金字塔 (5)</button>
+            
             <hr>
+            
+            <div class="color-picker-section">
+                <label for="colorPicker">🎨 选择颜色</label>
+                <input type="color" id="colorPicker" value="#4CAF50">
+            </div>
+            
+            <hr>
+            
+            <h4>🗑️ 删除操作</h4>
+            <button class="delete-btn" onclick="deleteSelected()">删除选中物体 (Del)</button>
+            <button class="delete-btn" onclick="deleteAll()">清空所有物体 (Shift+Del)</button>
+            
+            <hr>
+            
             <h4>⚙️ Worker计算</h4>
             <button onclick="submitWorkerTask('geometry')">几何计算</button>
             <button onclick="submitWorkerTask('collision')">碰撞检测</button>
         </div>
         
         <div id="status" class="disconnected">未连接</div>
+        
+        <button id="help-toggle" onclick="toggleHelp()">?</button>
+        
+        <div id="help-panel">
+            <h3>💡 操作提示</h3>
+            
+            <div class="help-section">
+                <h4>🎮 基本操作</h4>
+                <div class="help-item">
+                    <span class="help-desc">旋转视角</span>
+                    <span class="help-key">鼠标拖拽</span>
+                </div>
+                <div class="help-item">
+                    <span class="help-desc">缩放视角</span>
+                    <span class="help-key">滚轮</span>
+                </div>
+                <div class="help-item">
+                    <span class="help-desc">选择物体</span>
+                    <span class="help-key">点击</span>
+                </div>
+            </div>
+            
+            <div class="help-section">
+                <h4>⌨️ 快捷键</h4>
+                <div class="help-item">
+                    <span class="help-desc">创建方块</span>
+                    <span class="help-key">1</span>
+                </div>
+                <div class="help-item">
+                    <span class="help-desc">创建球体</span>
+                    <span class="help-key">2</span>
+                </div>
+                <div class="help-item">
+                    <span class="help-desc">创建圆柱</span>
+                    <span class="help-key">3</span>
+                </div>
+                <div class="help-item">
+                    <span class="help-desc">创建圆环</span>
+                    <span class="help-key">4</span>
+                </div>
+                <div class="help-item">
+                    <span class="help-desc">创建金字塔</span>
+                    <span class="help-key">5</span>
+                </div>
+                <div class="help-item">
+                    <span class="help-desc">删除选中</span>
+                    <span class="help-key">Del</span>
+                </div>
+                <div class="help-item">
+                    <span class="help-desc">清空所有</span>
+                    <span class="help-key">Shift+Del</span>
+                </div>
+                <div class="help-item">
+                    <span class="help-desc">显示/隐藏帮助</span>
+                    <span class="help-key">H</span>
+                </div>
+            </div>
+            
+            <div class="help-section">
+                <h4>🎨 颜色选择</h4>
+                <div class="help-item">
+                    <span class="help-desc">使用颜色选择器设置新物体的颜色</span>
+                </div>
+            </div>
+        </div>
         
         <div id="users-panel">
             <h4>👥 在线用户</h4>
@@ -235,6 +124,7 @@
     
     <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/PointerLockControls.js"></script>
     <script src="app.js"></script>
 </body>
 </html>

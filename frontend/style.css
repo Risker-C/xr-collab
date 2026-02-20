@@ -1,0 +1,398 @@
+* { 
+    margin: 0; 
+    padding: 0; 
+    box-sizing: border-box; 
+}
+
+body { 
+    font-family: "Microsoft YaHei", Arial, sans-serif; 
+    overflow: hidden;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+#canvas-container { 
+    width: 100vw; 
+    height: 100vh; 
+}
+
+#ui-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+}
+
+/* Join Panel */
+#join-panel {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: linear-gradient(135deg, rgba(0,0,0,0.95) 0%, rgba(30,30,50,0.95) 100%);
+    padding: 40px;
+    border-radius: 20px;
+    pointer-events: all;
+    color: white;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.1);
+    backdrop-filter: blur(10px);
+}
+
+#join-panel h2 {
+    margin-bottom: 25px;
+    text-align: center;
+    font-size: 28px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+#join-panel input {
+    display: block;
+    width: 300px;
+    margin: 15px 0;
+    padding: 14px;
+    border: 2px solid transparent;
+    border-radius: 10px;
+    font-size: 16px;
+    background: rgba(255,255,255,0.1);
+    color: white;
+    transition: all 0.3s;
+}
+
+#join-panel input:focus {
+    outline: none;
+    border-color: #667eea;
+    background: rgba(255,255,255,0.15);
+    box-shadow: 0 0 20px rgba(102, 126, 234, 0.3);
+}
+
+#join-panel input::placeholder {
+    color: rgba(255,255,255,0.5);
+}
+
+#join-panel button {
+    width: 100%;
+    padding: 16px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+    font-weight: bold;
+    font-size: 18px;
+    color: white;
+    margin-top: 15px;
+    transition: all 0.3s;
+    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+}
+
+#join-panel button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 25px rgba(102, 126, 234, 0.6);
+}
+
+/* Controls Panel */
+#controls {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    background: linear-gradient(135deg, rgba(0,0,0,0.9) 0%, rgba(30,30,50,0.9) 100%);
+    padding: 25px;
+    border-radius: 15px;
+    pointer-events: all;
+    display: none;
+    color: white;
+    min-width: 220px;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.1);
+    backdrop-filter: blur(10px);
+}
+
+#controls h3 {
+    margin-bottom: 18px;
+    font-size: 20px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+#controls button {
+    display: block;
+    width: 100%;
+    margin: 10px 0;
+    padding: 12px;
+    background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    transition: all 0.3s;
+    box-shadow: 0 4px 12px rgba(76, 175, 80, 0.3);
+}
+
+#controls button:hover { 
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(76, 175, 80, 0.5);
+}
+
+#controls button.delete-btn {
+    background: linear-gradient(135deg, #f44336 0%, #d32f2f 100%);
+    box-shadow: 0 4px 12px rgba(244, 67, 54, 0.3);
+}
+
+#controls button.delete-btn:hover {
+    box-shadow: 0 6px 20px rgba(244, 67, 54, 0.5);
+}
+
+#controls hr {
+    margin: 18px 0;
+    border: none;
+    border-top: 1px solid rgba(255,255,255,0.2);
+}
+
+#controls h4 {
+    margin: 12px 0 8px 0;
+    font-size: 14px;
+    color: #aaa;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+/* Color Picker Section */
+.color-picker-section {
+    margin: 15px 0;
+}
+
+.color-picker-section label {
+    display: block;
+    margin-bottom: 8px;
+    font-size: 13px;
+    color: #ccc;
+}
+
+#colorPicker {
+    width: 100%;
+    height: 40px;
+    border: 2px solid rgba(255,255,255,0.2);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+#colorPicker:hover {
+    border-color: #667eea;
+    box-shadow: 0 0 15px rgba(102, 126, 234, 0.4);
+}
+
+/* Status Badge */
+#status {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    padding: 12px 24px;
+    border-radius: 25px;
+    pointer-events: all;
+    font-weight: bold;
+    font-size: 14px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+    transition: all 0.3s;
+}
+
+#status.connected { 
+    background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+    color: white;
+    box-shadow: 0 4px 15px rgba(76, 175, 80, 0.4);
+}
+
+#status.disconnected { 
+    background: linear-gradient(135deg, #f44336 0%, #d32f2f 100%);
+    color: white;
+    box-shadow: 0 4px 15px rgba(244, 67, 54, 0.4);
+}
+
+/* Users Panel */
+#users-panel {
+    position: absolute;
+    bottom: 20px;
+    left: 20px;
+    background: linear-gradient(135deg, rgba(0,0,0,0.9) 0%, rgba(30,30,50,0.9) 100%);
+    padding: 20px;
+    border-radius: 15px;
+    pointer-events: all;
+    color: white;
+    max-width: 280px;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.1);
+    backdrop-filter: blur(10px);
+}
+
+#users-panel h4 {
+    margin-bottom: 15px;
+    font-size: 18px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+#users-list {
+    list-style: none;
+    margin-top: 10px;
+}
+
+#users-list li {
+    padding: 10px;
+    margin: 5px 0;
+    border-radius: 8px;
+    background: rgba(255,255,255,0.05);
+    border-left: 3px solid #667eea;
+    font-size: 14px;
+    transition: all 0.3s;
+}
+
+#users-list li:hover {
+    background: rgba(255,255,255,0.1);
+    transform: translateX(5px);
+}
+
+/* Worker Result Panel */
+#worker-result {
+    position: absolute;
+    bottom: 20px;
+    right: 20px;
+    background: linear-gradient(135deg, rgba(0,0,0,0.95) 0%, rgba(30,30,50,0.95) 100%);
+    padding: 20px;
+    border-radius: 15px;
+    pointer-events: all;
+    color: white;
+    max-width: 450px;
+    display: none;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.1);
+    backdrop-filter: blur(10px);
+}
+
+#worker-result strong {
+    font-size: 16px;
+    background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+#worker-result pre {
+    background: rgba(255,255,255,0.08);
+    padding: 15px;
+    border-radius: 8px;
+    margin-top: 12px;
+    overflow-x: auto;
+    font-size: 13px;
+    line-height: 1.6;
+    border: 1px solid rgba(255,255,255,0.1);
+}
+
+/* Help Panel */
+#help-panel {
+    position: absolute;
+    top: 50%;
+    right: 20px;
+    transform: translateY(-50%);
+    background: linear-gradient(135deg, rgba(0,0,0,0.9) 0%, rgba(30,30,50,0.9) 100%);
+    padding: 25px;
+    border-radius: 15px;
+    pointer-events: all;
+    color: white;
+    max-width: 320px;
+    display: none;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.1);
+    backdrop-filter: blur(10px);
+}
+
+#help-panel h3 {
+    margin-bottom: 20px;
+    font-size: 20px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.help-section {
+    margin-bottom: 20px;
+}
+
+.help-section h4 {
+    font-size: 14px;
+    color: #667eea;
+    margin-bottom: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.help-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+}
+
+.help-item:last-child {
+    border-bottom: none;
+}
+
+.help-key {
+    background: rgba(255,255,255,0.1);
+    padding: 4px 10px;
+    border-radius: 5px;
+    font-family: monospace;
+    font-size: 12px;
+    border: 1px solid rgba(255,255,255,0.2);
+}
+
+.help-desc {
+    font-size: 13px;
+    color: #ccc;
+}
+
+/* Help Toggle Button */
+#help-toggle {
+    position: absolute;
+    top: 80px;
+    right: 20px;
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border: none;
+    color: white;
+    font-size: 24px;
+    cursor: pointer;
+    pointer-events: all;
+    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+    transition: all 0.3s;
+    display: none;
+}
+
+#help-toggle:hover {
+    transform: scale(1.1) rotate(15deg);
+    box-shadow: 0 6px 25px rgba(102, 126, 234, 0.6);
+}
+
+/* Animations */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.fade-in {
+    animation: fadeIn 0.5s ease-out;
+}
