@@ -131,8 +131,39 @@ io.use((socket, next) => {
   }
 });
 
+// Chat system
+const chatHistory = [];
+const MAX_CHAT_HISTORY = 50;
+
 io.on("connection", (socket) => {
   console.log(`✅ ${socket.username} connected`);
+  
+  // Send chat history
+  socket.emit('chat:history', chatHistory);
+  
+  // Broadcast join notification
+  const joinMsg = {
+    type: 'system',
+    text: `${socket.username} joined`,
+    timestamp: Date.now()
+  };
+  chatHistory.push(joinMsg);
+  if (chatHistory.length > MAX_CHAT_HISTORY) chatHistory.shift();
+  io.emit('chat:message', joinMsg);
+  
+  // Handle chat messages
+  socket.on('chat:send', (data) => {
+    const msg = {
+      type: 'user',
+      userId: socket.userId,
+      username: socket.username,
+      text: data.text,
+      timestamp: Date.now()
+    };
+    chatHistory.push(msg);
+    if (chatHistory.length > MAX_CHAT_HISTORY) chatHistory.shift();
+    io.emit('chat:message', msg);
+  });
   
   socket.on("join-room", async (data) => {
     const { roomId } = data;
@@ -214,6 +245,16 @@ io.on("connection", (socket) => {
     if (!user) return;
     
     console.log(`❌ ${user.username} disconnected`);
+    
+    // Broadcast leave notification to chat
+    const leaveMsg = {
+      type: 'system',
+      text: `${socket.username} left`,
+      timestamp: Date.now()
+    };
+    chatHistory.push(leaveMsg);
+    if (chatHistory.length > MAX_CHAT_HISTORY) chatHistory.shift();
+    io.emit('chat:message', leaveMsg);
     
     socket.rooms.forEach(async room => {
       if (room !== socket.id) {
