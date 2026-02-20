@@ -344,17 +344,23 @@ print(f"Collision detected: {result}")
 function displayWorkerResult(result) {
     const resultDiv = document.getElementById('worker-result');
     if (result.status === 'completed' && result.result) {
-        resultDiv.innerHTML = `<strong>Worker Result:</strong><pre>${result.result.stdout || JSON.stringify(result.result)}</pre>`;
+        resultDiv.innerHTML = `<strong>✅ 计算结果：</strong><pre>${result.result.stdout || JSON.stringify(result.result, null, 2)}</pre>`;
     } else {
-        resultDiv.innerHTML = `<strong>Worker Error:</strong> ${result.error || 'Unknown error'}`;
+        resultDiv.innerHTML = `<strong>❌ 计算错误：</strong> ${result.error || '未知错误'}`;
     }
     resultDiv.style.display = 'block';
-    setTimeout(() => resultDiv.style.display = 'none', 5000);
+    setTimeout(() => resultDiv.style.display = 'none', 8000);
 }
 
 function updateStatus(message, connected) {
     const statusEl = document.getElementById('status');
-    statusEl.textContent = message;
+    const messages = {
+        'Connected': '已连接',
+        'Disconnected': '未连接',
+        'Computing geometry...': '正在计算几何...',
+        'Computing collision...': '正在检测碰撞...'
+    };
+    statusEl.textContent = messages[message] || message;
     statusEl.className = connected ? 'connected' : 'disconnected';
 }
 
@@ -362,7 +368,7 @@ function updateUsersList(roomUsers) {
     const listEl = document.getElementById('users-list');
     if (roomUsers) {
         listEl.innerHTML = roomUsers.map(u => 
-            `<li>${u.username} ${u.id === socket.id ? '(you)' : ''}</li>`
+            `<li>${u.username} ${u.id === socket.id ? '(你)' : ''}</li>`
         ).join('');
     }
 }

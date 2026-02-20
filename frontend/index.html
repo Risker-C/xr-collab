@@ -1,12 +1,12 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WebXR Real-time Collaboration</title>
+    <title>WebXR 实时协作平台</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: Arial, sans-serif; overflow: hidden; }
+        body { font-family: "Microsoft YaHei", Arial, sans-serif; overflow: hidden; }
         #canvas-container { width: 100vw; height: 100vh; }
         
         #ui-overlay {
@@ -23,81 +23,139 @@
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            background: rgba(0,0,0,0.8);
-            padding: 30px;
-            border-radius: 10px;
+            background: rgba(0,0,0,0.9);
+            padding: 40px;
+            border-radius: 15px;
             pointer-events: all;
             color: white;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+        }
+        
+        #join-panel h2 {
+            margin-bottom: 20px;
+            text-align: center;
+            font-size: 24px;
         }
         
         #join-panel input {
             display: block;
-            width: 250px;
-            margin: 10px 0;
-            padding: 10px;
-            border: none;
-            border-radius: 5px;
+            width: 280px;
+            margin: 15px 0;
+            padding: 12px;
+            border: 2px solid #4CAF50;
+            border-radius: 8px;
+            font-size: 16px;
+            background: rgba(255,255,255,0.1);
+            color: white;
+        }
+        
+        #join-panel input::placeholder {
+            color: rgba(255,255,255,0.6);
         }
         
         #join-panel button {
             width: 100%;
-            padding: 12px;
-            background: #00ff00;
+            padding: 15px;
+            background: #4CAF50;
             border: none;
-            border-radius: 5px;
+            border-radius: 8px;
             cursor: pointer;
             font-weight: bold;
+            font-size: 18px;
+            color: white;
+            margin-top: 10px;
+            transition: background 0.3s;
+        }
+        
+        #join-panel button:hover {
+            background: #45a049;
         }
         
         #controls {
             position: absolute;
             top: 20px;
             left: 20px;
-            background: rgba(0,0,0,0.7);
-            padding: 15px;
-            border-radius: 8px;
+            background: rgba(0,0,0,0.8);
+            padding: 20px;
+            border-radius: 10px;
             pointer-events: all;
             display: none;
             color: white;
+            min-width: 180px;
+        }
+        
+        #controls h3 {
+            margin-bottom: 15px;
+            font-size: 18px;
         }
         
         #controls button {
             display: block;
-            width: 150px;
-            margin: 5px 0;
-            padding: 8px;
+            width: 100%;
+            margin: 8px 0;
+            padding: 10px;
             background: #4CAF50;
             color: white;
             border: none;
-            border-radius: 4px;
+            border-radius: 6px;
             cursor: pointer;
+            font-size: 14px;
+            transition: background 0.3s;
         }
         
-        #controls button:hover { background: #45a049; }
+        #controls button:hover { 
+            background: #45a049;
+            transform: translateY(-2px);
+        }
+        
+        #controls hr {
+            margin: 15px 0;
+            border: none;
+            border-top: 1px solid rgba(255,255,255,0.3);
+        }
+        
+        #controls h4 {
+            margin: 10px 0;
+            font-size: 14px;
+            color: #aaa;
+        }
         
         #status {
             position: absolute;
             top: 20px;
             right: 20px;
-            padding: 10px 20px;
-            border-radius: 5px;
+            padding: 12px 24px;
+            border-radius: 8px;
             pointer-events: all;
             font-weight: bold;
+            font-size: 14px;
         }
         
-        #status.connected { background: #4CAF50; color: white; }
-        #status.disconnected { background: #f44336; color: white; }
+        #status.connected { 
+            background: #4CAF50; 
+            color: white;
+        }
+        
+        #status.disconnected { 
+            background: #f44336; 
+            color: white;
+        }
         
         #users-panel {
             position: absolute;
             bottom: 20px;
             left: 20px;
-            background: rgba(0,0,0,0.7);
-            padding: 15px;
-            border-radius: 8px;
+            background: rgba(0,0,0,0.8);
+            padding: 20px;
+            border-radius: 10px;
             pointer-events: all;
             color: white;
-            max-width: 200px;
+            max-width: 250px;
+        }
+        
+        #users-panel h4 {
+            margin-bottom: 12px;
+            font-size: 16px;
         }
         
         #users-list {
@@ -106,29 +164,41 @@
         }
         
         #users-list li {
-            padding: 5px 0;
+            padding: 8px 0;
             border-bottom: 1px solid rgba(255,255,255,0.2);
+            font-size: 14px;
+        }
+        
+        #users-list li:last-child {
+            border-bottom: none;
         }
         
         #worker-result {
             position: absolute;
             bottom: 20px;
             right: 20px;
-            background: rgba(0,0,0,0.8);
-            padding: 15px;
-            border-radius: 8px;
+            background: rgba(0,0,0,0.9);
+            padding: 20px;
+            border-radius: 10px;
             pointer-events: all;
             color: white;
-            max-width: 400px;
+            max-width: 450px;
             display: none;
+        }
+        
+        #worker-result strong {
+            font-size: 16px;
+            color: #4CAF50;
         }
         
         #worker-result pre {
             background: rgba(255,255,255,0.1);
-            padding: 10px;
-            border-radius: 4px;
+            padding: 12px;
+            border-radius: 6px;
             margin-top: 10px;
             overflow-x: auto;
+            font-size: 13px;
+            line-height: 1.5;
         }
     </style>
 </head>
@@ -137,26 +207,26 @@
     
     <div id="ui-overlay">
         <div id="join-panel">
-            <h2>Join Collaboration Room</h2>
-            <input type="text" id="username" placeholder="Your name" value="User">
-            <input type="text" id="roomId" placeholder="Room ID" value="lobby">
-            <button onclick="joinRoom()">Join Room</button>
+            <h2>🎮 加入协作房间</h2>
+            <input type="text" id="username" placeholder="输入你的名字" value="用户">
+            <input type="text" id="roomId" placeholder="输入房间ID" value="大厅">
+            <button onclick="joinRoom()">进入房间</button>
         </div>
         
         <div id="controls">
-            <h3>Controls</h3>
-            <button onclick="createCube()">Create Cube</button>
-            <button onclick="createSphere()">Create Sphere</button>
-            <hr style="margin: 10px 0; border-color: rgba(255,255,255,0.3);">
-            <h4>Worker Tasks</h4>
-            <button onclick="submitWorkerTask('geometry')">Geometry Calc</button>
-            <button onclick="submitWorkerTask('collision')">Collision Test</button>
+            <h3>🎨 控制面板</h3>
+            <button onclick="createCube()">创建方块</button>
+            <button onclick="createSphere()">创建球体</button>
+            <hr>
+            <h4>⚙️ Worker计算</h4>
+            <button onclick="submitWorkerTask('geometry')">几何计算</button>
+            <button onclick="submitWorkerTask('collision')">碰撞检测</button>
         </div>
         
-        <div id="status" class="disconnected">Disconnected</div>
+        <div id="status" class="disconnected">未连接</div>
         
         <div id="users-panel">
-            <h4>Users in Room</h4>
+            <h4>👥 在线用户</h4>
             <ul id="users-list"></ul>
         </div>
         
