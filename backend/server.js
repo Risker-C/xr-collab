@@ -10,12 +10,31 @@ const RedisStore = require("./redis-store");
 const app = express();
 const server = http.createServer(app);
 const io = socketIO(server, {
-  cors: { origin: "*", methods: ["GET", "POST"] }
+  cors: { 
+    origin: "*", 
+    methods: ["GET", "POST"],
+    credentials: true
+  },
+  transports: ['websocket', 'polling'],
+  allowEIO3: true
 });
 
 app.use(cors());
 app.use(express.json());
 app.use(express.static("public"));
+
+// Health check endpoint
+app.get("/", (req, res) => {
+  res.json({ 
+    status: "ok", 
+    message: "XR Collab Backend Running",
+    timestamp: new Date().toISOString()
+  });
+});
+
+app.get("/health", (req, res) => {
+  res.json({ status: "ok" });
+});
 
 const redis = new RedisStore();
 const roomManager = new RoomManager(redis);
