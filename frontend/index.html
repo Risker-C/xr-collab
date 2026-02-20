@@ -9,6 +9,28 @@
 <body>
     <div id="canvas-container"></div>
     
+    <!-- Chat Panel -->
+    <div id="chat-panel">
+        <div id="chat-header">
+            <span>💬 Chat</span>
+            <button id="chat-toggle">✕</button>
+        </div>
+        <div id="chat-messages"></div>
+        <div id="chat-emoji-bar">
+            <button class="emoji-btn" data-emoji="😀">😀</button>
+            <button class="emoji-btn" data-emoji="👍">👍</button>
+            <button class="emoji-btn" data-emoji="🎉">🎉</button>
+            <button class="emoji-btn" data-emoji="❤️">❤️</button>
+            <button class="emoji-btn" data-emoji="😂">😂</button>
+            <button class="emoji-btn" data-emoji="🔥">🔥</button>
+        </div>
+        <div id="chat-input-row">
+            <input id="chat-input" type="text" placeholder="Message..." maxlength="200" autocomplete="off">
+            <button id="chat-send">Send</button>
+        </div>
+    </div>
+    <button id="chat-open-btn">💬</button>
+    
     <div id="ui-overlay">
         <div id="join-panel">
             <h2>🎮 加入协作房间</h2>
@@ -133,6 +155,7 @@
     <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/PointerLockControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/cannon@0.6.2/build/cannon.min.js"></script>
     <script src="app.js"></script>
 </body>
 </html>

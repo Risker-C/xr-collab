@@ -22,6 +22,10 @@ let offset = new THREE.Vector3();
 let intersection = new THREE.Vector3();
 let isDragging = false;
 
+// 物理引擎
+let world;
+let physicsBodies = new Map(); // mesh -> body
+
 // Initialize Three.js scene
 function initScene() {
     scene = new THREE.Scene();
@@ -43,12 +47,24 @@ function initScene() {
     dirLight.position.set(5, 10, 5);
     scene.add(dirLight);
 
+    // 初始化物理世界
+    initPhysics();
+
     // Ground
     const groundGeometry = new THREE.PlaneGeometry(50, 50);
     const groundMaterial = new THREE.MeshStandardMaterial({ color: 0x7cfc00 });
     const ground = new THREE.Mesh(groundGeometry, groundMaterial);
     ground.rotation.x = -Math.PI / 2;
+    ground.userData.isGround = true;
     scene.add(ground);
+
+    // 地面物理体
+    const groundBody = new CANNON.Body({
+        mass: 0,
+        shape: new CANNON.Plane()
+    });
+    groundBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2);
+    world.addBody(groundBody);
 
     const gridHelper = new THREE.GridHelper(50, 50);
     scene.add(gridHelper);
@@ -77,6 +93,14 @@ function initScene() {
 
     window.addEventListener('resize', onWindowResize);
     renderer.setAnimationLoop(animate);
+}
+
+// 初始化物理世界
+function initPhysics() {
+    world = new CANNON.World();
+    world.gravity.set(0, -9.82, 0);
+    world.broadphase = new CANNON.NaiveBroadphase();
+    world.solver.iterations = 10;
 }
 
 // XR Controller Setup
@@ -217,6 +241,15 @@ function onKeyUp(event) {
 
 function animate() {
     const delta = 0.016; // ~60fps
+    
+    // 更新物理世界
+    world.step(delta);
+    
+    // 同步物理体到渲染网格
+    physicsBodies.forEach((body, mesh) => {
+        mesh.position.copy(body.position);
+        mesh.quaternion.copy(body.quaternion);
+    });
     
     // WASD 移动控制
     if (controls.isLocked) {
@@ -366,6 +399,14 @@ function onMouseMove(event) {
     if (raycaster.ray.intersectPlane(dragPlane, intersection)) {
         selectedObject.position.copy(intersection.sub(offset));
         
+        // 同步物理体位置
+        const body = physicsBodies.get(selectedObject);
+        if (body) {
+            body.position.copy(selectedObject.position);
+            body.velocity.set(0, 0, 0);
+            body.angularVelocity.set(0, 0, 0);
+        }
+        
         // 广播物体位置更新
         if (socket && socket.connected && selectedObject.userData.objectId) {
             socket.emit('object-move', {
@@ -381,8 +422,24 @@ function onMouseMove(event) {
 }
 
 function onMouseUp(event) {
-    if (selectedObject && selectedObject.material.emissive) {
-        selectedObject.material.emissive.setHex(0x000000);
+    if (selectedObject) {
+        if (selectedObject.material.emissive) {
+            selectedObject.material.emissive.setHex(0x000000);
+        }
+        
+        // 投掷功能：根据鼠标移动速度施加力
+        if (event.shiftKey) {
+            const body = physicsBodies.get(selectedObject);
+            if (body) {
+                const throwDirection = new THREE.Vector3();
+                camera.getWorldDirection(throwDirection);
+                body.velocity.set(
+                    throwDirection.x * 10,
+                    throwDirection.y * 10 + 5,
+                    throwDirection.z * 10
+                );
+            }
+        }
     }
     
     selectedObject = null;
@@ -438,6 +495,11 @@ function initSocket() {
             obj.userData.objectId === data.objectId
         );
         if (objectToRemove) {
+            const body = physicsBodies.get(objectToRemove);
+            if (body) {
+                world.removeBody(body);
+                physicsBodies.delete(objectToRemove);
+            }
             scene.remove(objectToRemove);
         }
     });
@@ -446,7 +508,14 @@ function initSocket() {
         const objectsToRemove = scene.children.filter(obj => 
             obj.userData.objectId && obj.type === 'Mesh'
         );
-        objectsToRemove.forEach(obj => scene.remove(obj));
+        objectsToRemove.forEach(obj => {
+            const body = physicsBodies.get(obj);
+            if (body) {
+                world.removeBody(body);
+                physicsBodies.delete(obj);
+            }
+            scene.remove(obj);
+        });
     });
 
     socket.on('object-moved', (data) => {
@@ -520,26 +589,32 @@ function removeRemoteUser(userId) {
 }
 
 function createObject(data) {
-    let geometry, material, mesh;
+    let geometry, material, mesh, shape;
     
     switch(data.type) {
         case 'cube':
             geometry = new THREE.BoxGeometry(0.5, 0.5, 0.5);
+            shape = new CANNON.Box(new CANNON.Vec3(0.25, 0.25, 0.25));
             break;
         case 'sphere':
             geometry = new THREE.SphereGeometry(0.25, 16, 16);
+            shape = new CANNON.Sphere(0.25);
             break;
         case 'cylinder':
             geometry = new THREE.CylinderGeometry(0.2, 0.2, 0.5, 16);
+            shape = new CANNON.Cylinder(0.2, 0.2, 0.5, 16);
             break;
         case 'torus':
             geometry = new THREE.TorusGeometry(0.3, 0.1, 16, 32);
+            shape = new CANNON.Sphere(0.3); // 近似
             break;
         case 'pyramid':
             geometry = new THREE.ConeGeometry(0.3, 0.5, 4);
+            shape = new CANNON.Cylinder(0.3, 0.01, 0.5, 4);
             break;
         default:
             geometry = new THREE.BoxGeometry(0.5, 0.5, 0.5);
+            shape = new CANNON.Box(new CANNON.Vec3(0.25, 0.25, 0.25));
     }
     
     material = new THREE.MeshStandardMaterial({ 
@@ -549,6 +624,16 @@ function createObject(data) {
     mesh.position.set(data.position.x, data.position.y, data.position.z);
     mesh.userData = { objectId: data.id || Date.now(), type: data.type };
     scene.add(mesh);
+    
+    // 创建物理体
+    const body = new CANNON.Body({
+        mass: 1,
+        shape: shape,
+        position: new CANNON.Vec3(data.position.x, data.position.y, data.position.z)
+    });
+    world.addBody(body);
+    physicsBodies.set(mesh, body);
+    
     return mesh;
 }
 
@@ -616,6 +701,14 @@ function deleteSelected() {
     }
     
     const objectId = selectedObject.userData.objectId;
+    
+    // 移除物理体
+    const body = physicsBodies.get(selectedObject);
+    if (body) {
+        world.removeBody(body);
+        physicsBodies.delete(selectedObject);
+    }
+    
     scene.remove(selectedObject);
     
     // 广播删除事件
@@ -638,6 +731,11 @@ function deleteAll() {
     );
     
     objectsToRemove.forEach(obj => {
+        const body = physicsBodies.get(obj);
+        if (body) {
+            world.removeBody(body);
+            physicsBodies.delete(obj);
+        }
         scene.remove(obj);
     });
     
