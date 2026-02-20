@@ -161,7 +161,12 @@ function onWindowResize() {
 
 // Socket.IO connection
 function initSocket() {
-    socket = io('https://xr-collab-backend.onrender.com');
+    socket = io('https://xr-collab-backend.onrender.com', {
+        transports: ['polling', 'websocket'],
+        reconnection: true,
+        reconnectionDelay: 1000,
+        reconnectionAttempts: 5
+    });
 
     socket.on('connect', () => {
         updateStatus('Connected', true);
