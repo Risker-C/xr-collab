@@ -7,6 +7,7 @@
     <link rel="stylesheet" href="style.css">
     <script src="lib/fullscreen.js"></script>
     <script src="lib/interactive-feedback.js"></script>
+    <script src="lib/file-upload.js"></script>
 </head>
 <body>
     <div id="canvas-container"></div>
@@ -112,6 +113,16 @@
                 <button onclick="whiteboardSystem.clearActive()">🧹 清空白板</button>
                 <button onclick="whiteboardSystem.undo()">↩️ 白板撤销</button>
                 <button onclick="whiteboardSystem.redo()">↪️ 白板重做</button>
+            </div>
+
+            <hr>
+
+            <h4>📎 文件上传</h4>
+            <div class="file-upload-section">
+                <input type="file" id="file-input" accept="image/png,image/jpeg,application/pdf" style="display:none" onchange="handleFileSelect(event)">
+                <button onclick="document.getElementById('file-input').click()">📁 选择文件</button>
+                <div id="upload-status"></div>
+                <small>支持: PNG, JPG, PDF (≤100MB)</small>
             </div>
 
             <div class="whiteboard-transform-grid">

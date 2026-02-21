@@ -918,3 +918,39 @@ body {
 body.pointer {
     cursor: pointer !important;
 }
+
+/* File Upload Styles */
+.file-upload-section {
+    margin: 10px 0;
+}
+
+.file-upload-section button {
+    width: 100%;
+    padding: 10px;
+    margin-bottom: 8px;
+    background: #667eea;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+.file-upload-section button:hover {
+    background: #5568d3;
+}
+
+#upload-status {
+    margin: 8px 0;
+    padding: 8px;
+    border-radius: 4px;
+    font-size: 13px;
+    text-align: center;
+}
+
+.file-upload-section small {
+    display: block;
+    color: #999;
+    font-size: 11px;
+    margin-top: 4px;
+}
