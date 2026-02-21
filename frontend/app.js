@@ -98,6 +98,13 @@ function initScene() {
     renderer.domElement.addEventListener('mouseup', onMouseUp);
 
     window.addEventListener('resize', onWindowResize);
+    
+    // Add VR Button
+    document.body.appendChild(VRButton.createButton(renderer));
+    
+    // Create 3D UI for VR mode
+    createVRUI();
+    
     renderer.setAnimationLoop(animate);
 }
 
@@ -130,6 +137,60 @@ function initXRControllers() {
     line.scale.z = 5;
     controller1.add(line.clone());
     controller2.add(line.clone());
+}
+
+// Create 3D UI Panel for VR mode
+function createVRUI() {
+    // Create canvas for UI
+    const canvas = document.createElement('canvas');
+    canvas.width = 512;
+    canvas.height = 512;
+    const ctx = canvas.getContext('2d');
+    
+    // Draw UI background
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+    ctx.fillRect(0, 0, 512, 512);
+    
+    // Draw title
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 32px Arial';
+    ctx.fillText('XR Collab Controls', 20, 50);
+    
+    // Draw instructions
+    ctx.font = '20px Arial';
+    ctx.fillStyle = '#aaaaaa';
+    const instructions = [
+        'Trigger: Select/Create Object',
+        'Grip: Delete Object',
+        'Joystick: Move Around',
+        '',
+        'Shapes Available:',
+        '• Cube • Sphere • Cylinder',
+        '• Cone • Torus'
+    ];
+    
+    let y = 100;
+    instructions.forEach(line => {
+        ctx.fillText(line, 30, y);
+        y += 35;
+    });
+    
+    // Create texture and material
+    const texture = new THREE.CanvasTexture(canvas);
+    const material = new THREE.MeshBasicMaterial({ 
+        map: texture, 
+        transparent: true,
+        side: THREE.DoubleSide
+    });
+    
+    // Create UI panel mesh
+    const geometry = new THREE.PlaneGeometry(1, 1);
+    const uiPanel = new THREE.Mesh(geometry, material);
+    uiPanel.position.set(0, 1.5, -2);
+    uiPanel.userData.isUI = true;
+    scene.add(uiPanel);
+    
+    return uiPanel;
 }
 
 function onSelectStart(event) {
