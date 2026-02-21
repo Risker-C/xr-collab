@@ -26,6 +26,12 @@ let isDragging = false;
 let world;
 let physicsBodies = new Map(); // mesh -> body
 
+// 物理时间步（固定步长）
+const clock = new THREE.Clock();
+let accumulator = 0;
+const fixedStep = 1 / 60;
+const maxSubSteps = 10;
+
 // Initialize Three.js scene
 function initScene() {
     scene = new THREE.Scene();
@@ -240,10 +246,16 @@ function onKeyUp(event) {
 }
 
 function animate() {
-    const delta = 0.016; // ~60fps
+    const delta = clock.getDelta();
     
-    // 更新物理世界
-    world.step(delta);
+    // 更新物理世界（固定时间步）
+    accumulator += delta;
+    let subSteps = 0;
+    while (accumulator >= fixedStep && subSteps < maxSubSteps) {
+        world.step(fixedStep);
+        accumulator -= fixedStep;
+        subSteps++;
+    }
     
     // 同步物理体到渲染网格
     physicsBodies.forEach((body, mesh) => {
