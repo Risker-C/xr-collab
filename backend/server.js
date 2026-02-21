@@ -6,7 +6,7 @@ const path = require("path");
 const socketIO = require("socket.io");
 const cors = require("cors");
 const jwt = require("jsonwebtoken");
-const { generateToken } = require("./auth");
+const { generateToken, requireHttpAuth } = require("./auth");
 const RoomManager = require("./rooms");
 const WorkerBridge = require("./worker-bridge");
 const RedisStore = require("./redis-store");
@@ -677,7 +677,7 @@ app.get("/api/files/:fileId/thumbnail", async (req, res) => {
   res.sendFile(path.resolve(target.path));
 });
 
-app.delete("/api/files/:fileId", async (req, res) => {
+app.delete("/api/files/:fileId", requireHttpAuth, async (req, res) => {
   const fileMeta = fileManager.getFile(req.params.fileId);
   if (!fileMeta) {
     res.status(404).json({ error: "File not found" });
@@ -694,7 +694,7 @@ app.delete("/api/files/:fileId", async (req, res) => {
     return;
   }
 
-  const requesterId = String(req.body?.requesterId || req.query.requesterId || "");
+  const requesterId = req.user.userId; // 从认证token获取，不再信任客户端
   const canDelete = fileManager.canDelete(fileMeta.id, requesterId, room.ownerId);
 
   if (!canDelete) {
@@ -750,29 +750,35 @@ app.get("/api/health", (req, res) => {
   });
 });
 
-// Socket.IO with optional auth (allow anonymous)
+// Socket.IO with optional auth (guest mode only if no token provided)
 io.use((socket, next) => {
   const token = socket.handshake.auth.token;
 
+  // No token = explicit guest mode
   if (!token) {
     socket.userId = `guest_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
     socket.username =
       socket.handshake.auth.username || `访客_${socket.id.slice(0, 4)}`;
+    socket.isGuest = true;
     return next();
   }
 
+  // Has token = must be valid
   try {
-    const decoded = jwt.verify(
-      token,
-      process.env.JWT_SECRET || "xr-collab-secret"
-    );
+    const { verifyToken } = require("./auth");
+    const decoded = verifyToken(token);
+    
+    if (!decoded) {
+      return next(new Error('Invalid or expired token'));
+    }
+    
     socket.userId = decoded.userId;
     socket.username = decoded.username;
+    socket.isGuest = false;
     next();
   } catch (err) {
-    socket.userId = `guest_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
-    socket.username = `访客_${socket.id.slice(0, 4)}`;
-    next();
+    console.error('Socket auth error:', err);
+    next(new Error('Authentication failed'));
   }
 });
 

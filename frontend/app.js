@@ -1060,16 +1060,41 @@ function renderPublicRoomList(rooms = []) {
         return;
     }
 
-    listEl.innerHTML = rooms.map((room) => `
-        <li>
-            <div class="room-meta">
-                <strong>${room.name || room.id}</strong>
-                <span>ID: ${room.id} · ${room.userCount || 0}/${room.maxUsers || 50}</span>
-                <span>${room.hasPassword ? '🔒 需密码' : '🌐 公开'}</span>
-            </div>
-            <button onclick="joinPublicRoom('${room.id}', ${Boolean(room.hasPassword)})">加入</button>
-        </li>
-    `).join('');
+    // Clear existing content
+    listEl.innerHTML = '';
+    
+    // Create room items safely using DOM API
+    rooms.forEach(room => {
+        const li = document.createElement('li');
+        
+        const metaDiv = document.createElement('div');
+        metaDiv.className = 'room-meta';
+        
+        const strong = document.createElement('strong');
+        strong.textContent = room.name || room.id; // Safe: textContent escapes HTML
+        
+        const idSpan = document.createElement('span');
+        idSpan.textContent = `ID: ${room.id} · ${room.userCount || 0}/${room.maxUsers || 50}`;
+        
+        const statusSpan = document.createElement('span');
+        statusSpan.textContent = room.hasPassword ? '🔒 需密码' : '🌐 公开';
+        
+        metaDiv.appendChild(strong);
+        metaDiv.appendChild(idSpan);
+        metaDiv.appendChild(statusSpan);
+        
+        const button = document.createElement('button');
+        button.textContent = '加入';
+        button.dataset.roomId = room.id; // Safe: data attributes
+        button.dataset.hasPassword = Boolean(room.hasPassword);
+        button.addEventListener('click', () => {
+            joinPublicRoom(room.id, Boolean(room.hasPassword));
+        });
+        
+        li.appendChild(metaDiv);
+        li.appendChild(button);
+        listEl.appendChild(li);
+    });
 }
 
 async function createRoom() {
@@ -1396,10 +1421,28 @@ function displayWorkerResult(result) {
     const resultDiv = document.getElementById('worker-result');
     if (!resultDiv) return;
 
+    // Clear existing content
+    resultDiv.innerHTML = '';
+    
     if (result.status === 'completed' && result.result) {
-        resultDiv.innerHTML = `<strong>✅ 计算结果：</strong><pre>${result.result.stdout || JSON.stringify(result.result, null, 2)}</pre>`;
+        const strong = document.createElement('strong');
+        strong.textContent = '✅ 计算结果：';
+        
+        const pre = document.createElement('pre');
+        pre.textContent = result.result.stdout || JSON.stringify(result.result, null, 2);
+        
+        resultDiv.appendChild(strong);
+        resultDiv.appendChild(pre);
     } else {
-        resultDiv.innerHTML = `<strong>❌ 计算错误：</strong> ${result.error || '未知错误'}`;
+        const strong = document.createElement('strong');
+        strong.textContent = '❌ 计算错误：';
+        
+        const span = document.createElement('span');
+        span.textContent = result.error || '未知错误';
+        
+        resultDiv.appendChild(strong);
+        resultDiv.appendChild(document.createTextNode(' '));
+        resultDiv.appendChild(span);
     }
 
     resultDiv.style.display = 'block';
@@ -1433,12 +1476,17 @@ function updateUsersList(roomUsers) {
             whiteboardSystem?.setRoomContext({ role: self.role, userId: self.id || self.userId });
         }
 
-        listEl.innerHTML = roomUsers.map((u) => {
+        // Clear and rebuild user list safely
+        listEl.innerHTML = '';
+        roomUsers.forEach(u => {
             const userId = u.id || u.userId;
             const isSelf = (u.socketId && socket && u.socketId === socket.id) || (currentUserId && userId === currentUserId);
             const role = u.role === 'host' ? '👑' : '';
-            return `<li>${role}${u.username} ${isSelf ? '(你)' : ''}</li>`;
-        }).join('');
+            
+            const li = document.createElement('li');
+            li.textContent = `${role}${u.username} ${isSelf ? '(你)' : ''}`;
+            listEl.appendChild(li);
+        });
     }
 }
 

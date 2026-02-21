@@ -944,12 +944,27 @@ export class WhiteboardSystem {
             return;
         }
 
-        list.innerHTML = Array.from(this.whiteboards.keys()).map((id) => {
+        // Clear and rebuild whiteboard list safely
+        list.innerHTML = '';
+        Array.from(this.whiteboards.keys()).forEach(id => {
             const active = id === this.activeWhiteboardId ? 'active-board' : '';
-            return `<li class="${active}">
-                <button type="button" onclick="selectWhiteboard('${id}')">${id}</button>
-            </li>`;
-        }).join('');
+            
+            const li = document.createElement('li');
+            li.className = active;
+            
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.textContent = id;
+            button.dataset.whiteboardId = id;
+            button.addEventListener('click', () => {
+                if (typeof window.selectWhiteboard === 'function') {
+                    window.selectWhiteboard(id);
+                }
+            });
+            
+            li.appendChild(button);
+            list.appendChild(li);
+        });
 
         this.renderPermissionBadge();
     }

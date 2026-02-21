@@ -1,11 +1,15 @@
 const jwt = require('jsonwebtoken');
-const crypto = require('crypto');
 
-const JWT_SECRET = process.env.JWT_SECRET || crypto.randomBytes(32).toString('hex');
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  console.error('FATAL: JWT_SECRET environment variable is required');
+  process.exit(1);
+}
+
 const JWT_EXPIRES = '24h';
 
 function generateToken(userId, username) {
-  return jwt.sign({ userId, username, iat: Date.now() }, JWT_SECRET, { expiresIn: JWT_EXPIRES });
+  return jwt.sign({ userId, username }, JWT_SECRET, { expiresIn: JWT_EXPIRES });
 }
 
 function verifyToken(token) {
@@ -28,4 +32,15 @@ function authMiddleware(socket, next) {
   next();
 }
 
-module.exports = { generateToken, verifyToken, authMiddleware, JWT_SECRET };
+function requireHttpAuth(req, res, next) {
+  const auth = req.headers.authorization || '';
+  const token = auth.startsWith('Bearer ') ? auth.slice(7) : null;
+  const decoded = token ? verifyToken(token) : null;
+  if (!decoded) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  req.user = decoded;
+  next();
+}
+
+module.exports = { generateToken, verifyToken, authMiddleware, requireHttpAuth, JWT_SECRET };
