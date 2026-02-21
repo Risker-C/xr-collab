@@ -2,7 +2,8 @@ const express = require("express");
 const http = require("http");
 const socketIO = require("socket.io");
 const cors = require("cors");
-const { generateToken, authMiddleware } = require("./auth");
+const jwt = require("jsonwebtoken");
+const { generateToken } = require("./auth");
 const RoomManager = require("./rooms");
 const WorkerBridge = require("./worker-bridge");
 const RedisStore = require("./redis-store");
@@ -10,12 +11,12 @@ const RedisStore = require("./redis-store");
 const app = express();
 const server = http.createServer(app);
 const io = socketIO(server, {
-  cors: { 
-    origin: "*", 
+  cors: {
+    origin: "*",
     methods: ["GET", "POST"],
     credentials: true
   },
-  transports: ['websocket', 'polling'],
+  transports: ["websocket", "polling"],
   allowEIO3: true
 });
 
@@ -23,10 +24,118 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static("public"));
 
-// Health check endpoint
+const redis = new RedisStore();
+const roomManager = new RoomManager(redis);
+const workerBridge = new WorkerBridge();
+
+// socket.id -> { id, roomId, username, position, rotation }
+const users = new Map();
+const chatHistoryByRoom = new Map();
+const MAX_CHAT_HISTORY = 50;
+
+function parseBoolean(value, defaultValue = false) {
+  if (value === undefined || value === null) return defaultValue;
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") {
+    const lowered = value.trim().toLowerCase();
+    if (["1", "true", "yes", "y"].includes(lowered)) return true;
+    if (["0", "false", "no", "n"].includes(lowered)) return false;
+  }
+  return Boolean(value);
+}
+
+function normalizeUsername(name, fallback) {
+  const trimmed = String(name || "").trim();
+  return trimmed || fallback;
+}
+
+function getRoomHistory(roomId) {
+  if (!chatHistoryByRoom.has(roomId)) {
+    chatHistoryByRoom.set(roomId, []);
+  }
+  return chatHistoryByRoom.get(roomId);
+}
+
+function pushRoomHistory(roomId, message) {
+  const history = getRoomHistory(roomId);
+  history.push(message);
+  if (history.length > MAX_CHAT_HISTORY) history.shift();
+  return history;
+}
+
+function formatRoomUser(user) {
+  return {
+    id: user.userId,
+    userId: user.userId,
+    socketId: user.socketId,
+    username: user.username,
+    position: user.position || { x: 0, y: 1.6, z: 0 },
+    rotation: user.rotation || { x: 0, y: 0, z: 0 }
+  };
+}
+
+function getCurrentRoomId(socket) {
+  return socket.data?.currentRoom || null;
+}
+
+function emitPublicRoomList(targetSocket = null) {
+  const payload = roomManager.getRoomList(false);
+  if (targetSocket) {
+    targetSocket.emit("room-list", payload);
+    return;
+  }
+  io.emit("room-list", payload);
+}
+
+async function leaveCurrentRoom(socket, options = {}) {
+  const roomId = getCurrentRoomId(socket);
+  if (!roomId) return;
+
+  socket.leave(roomId);
+  socket.data.currentRoom = null;
+
+  await roomManager.leaveRoom(roomId, socket.userId);
+
+  const trackedUser = users.get(socket.id);
+  if (trackedUser) {
+    trackedUser.roomId = null;
+    users.set(socket.id, trackedUser);
+  }
+
+  if (!options.silent) {
+    socket.to(roomId).emit("user-left", socket.userId);
+
+    const roomUsers = roomManager.getRoomUsers(roomId).map(formatRoomUser);
+    io.to(roomId).emit("room-users", roomUsers);
+
+    const leaveMsg = {
+      type: "system",
+      text: `${socket.username} left`,
+      timestamp: Date.now()
+    };
+    pushRoomHistory(roomId, leaveMsg);
+    io.to(roomId).emit("chat:message", leaveMsg);
+
+    await redis.recordEvent(roomId, {
+      type: "leave",
+      userId: socket.userId,
+      username: socket.username
+    });
+  }
+
+  emitPublicRoomList();
+}
+
+// Initialize
+(async () => {
+  await redis.connect();
+  workerBridge.start();
+})();
+
+// Health check endpoints
 app.get("/", (req, res) => {
-  res.json({ 
-    status: "ok", 
+  res.json({
+    status: "ok",
     message: "XR Collab Backend Running",
     timestamp: new Date().toISOString()
   });
@@ -36,47 +145,61 @@ app.get("/health", (req, res) => {
   res.json({ status: "ok" });
 });
 
-const redis = new RedisStore();
-const roomManager = new RoomManager(redis);
-const workerBridge = new WorkerBridge();
-const users = new Map();
-
-// Initialize
-(async () => {
-  await redis.connect();
-  workerBridge.start();
-})();
-
 // Auth endpoints
 app.post("/api/auth/login", (req, res) => {
   const { username } = req.body;
   if (!username) return res.status(400).json({ error: "Username required" });
-  
-  const userId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+  const userId = `user_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
   const token = generateToken(userId, username);
   res.json({ token, userId, username });
 });
 
 // Room endpoints
 app.get("/api/rooms", (req, res) => {
-  res.json(roomManager.getRoomList());
+  res.json(roomManager.getRoomList(false));
 });
 
 app.post("/api/rooms", async (req, res) => {
-  const { roomId, maxUsers, persistent } = req.body;
-  if (!roomId) return res.status(400).json({ error: "roomId required" });
-  
+  const {
+    roomId,
+    name,
+    password,
+    maxUsers,
+    persistent,
+    isPublic,
+    visibility
+  } = req.body || {};
+
   try {
-    const room = await roomManager.createRoom(roomId, { maxUsers, persistent });
-    res.json({ id: room.id, created: room.created });
+    const room = await roomManager.createRoom({
+      roomId,
+      name,
+      password,
+      maxUsers,
+      persistent: parseBoolean(persistent, false),
+      isPublic:
+        visibility === "private"
+          ? false
+          : parseBoolean(isPublic, true),
+      ownerId: null
+    });
+
+    const summary = roomManager.getRoomSummary(room);
+    emitPublicRoomList();
+
+    res.json({
+      ...summary,
+      inviteCode: room.id
+    });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    res.status(400).json({ error: e.message });
   }
 });
 
 app.get("/api/rooms/:roomId/replay", async (req, res) => {
   const { roomId } = req.params;
-  const fromTime = parseInt(req.query.from) || 0;
+  const fromTime = parseInt(req.query.from, 10) || 0;
   const events = await redis.getReplay(roomId, fromTime);
   res.json(events);
 });
@@ -108,189 +231,306 @@ app.get("/api/health", (req, res) => {
 // Socket.IO with optional auth (allow anonymous)
 io.use((socket, next) => {
   const token = socket.handshake.auth.token;
-  
+
   if (!token) {
-    // 允许匿名连接，生成临时用户
-    socket.userId = `guest_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    socket.username = socket.handshake.auth.username || `访客_${socket.id.slice(0, 4)}`;
+    socket.userId = `guest_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
+    socket.username =
+      socket.handshake.auth.username || `访客_${socket.id.slice(0, 4)}`;
     return next();
   }
-  
-  // 如果有token，验证它
+
   try {
-    const jwt = require('jsonwebtoken');
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'xr-collab-secret');
+    const decoded = jwt.verify(
+      token,
+      process.env.JWT_SECRET || "xr-collab-secret"
+    );
     socket.userId = decoded.userId;
     socket.username = decoded.username;
     next();
   } catch (err) {
-    // Token无效，仍然允许作为访客
-    socket.userId = `guest_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    socket.userId = `guest_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
     socket.username = `访客_${socket.id.slice(0, 4)}`;
     next();
   }
 });
 
-// Chat system
-const chatHistory = [];
-const MAX_CHAT_HISTORY = 50;
-
 io.on("connection", (socket) => {
   console.log(`✅ ${socket.username} connected`);
-  
-  // Send chat history
-  socket.emit('chat:history', chatHistory);
-  
-  // Broadcast join notification
-  const joinMsg = {
-    type: 'system',
-    text: `${socket.username} joined`,
-    timestamp: Date.now()
-  };
-  chatHistory.push(joinMsg);
-  if (chatHistory.length > MAX_CHAT_HISTORY) chatHistory.shift();
-  io.emit('chat:message', joinMsg);
-  
-  // Handle chat messages
-  socket.on('chat:send', (data) => {
-    const msg = {
-      type: 'user',
-      userId: socket.userId,
-      username: socket.username,
-      text: data.text,
-      timestamp: Date.now()
-    };
-    chatHistory.push(msg);
-    if (chatHistory.length > MAX_CHAT_HISTORY) chatHistory.shift();
-    io.emit('chat:message', msg);
+
+  users.set(socket.id, {
+    id: socket.userId,
+    socketId: socket.id,
+    username: socket.username,
+    roomId: null,
+    position: { x: 0, y: 1.6, z: 0 },
+    rotation: { x: 0, y: 0, z: 0 }
   });
-  
-  socket.on("join-room", async (data) => {
-    const { roomId } = data;
-    
+
+  emitPublicRoomList(socket);
+
+  socket.on("user:set-name", (payload = {}) => {
+    socket.username = normalizeUsername(payload.username, socket.username);
+    const user = users.get(socket.id);
+    if (user) {
+      user.username = socket.username;
+      users.set(socket.id, user);
+    }
+  });
+
+  socket.on("room:list", () => {
+    emitPublicRoomList(socket);
+  });
+
+  const handleCreateRoom = async (payload = {}) => {
     try {
-      const room = await roomManager.joinRoom(roomId, socket.userId, {
-        username: socket.username,
-        socketId: socket.id
+      const room = await roomManager.createRoom({
+        roomId: payload.roomId,
+        name: payload.name,
+        password: payload.password,
+        maxUsers: payload.maxUsers,
+        persistent: parseBoolean(payload.persistent, false),
+        isPublic:
+          payload.visibility === "private"
+            ? false
+            : parseBoolean(payload.isPublic, true),
+        ownerId: socket.userId
       });
-      
-      socket.join(roomId);
-      
-      const user = {
+
+      const summary = roomManager.getRoomSummary(room);
+      socket.emit("room-created", summary);
+      emitPublicRoomList();
+    } catch (error) {
+      socket.emit("room-error", { message: error.message });
+    }
+  };
+
+  socket.on("room:create", handleCreateRoom);
+  socket.on("create-room", handleCreateRoom);
+
+  const handleJoinRoom = async (data = {}) => {
+    const incomingRoomId = roomManager.normalizeRoomId(data.roomId);
+    if (!incomingRoomId) {
+      socket.emit("room-error", { message: "Room ID required" });
+      return;
+    }
+
+    if (data.username) {
+      socket.username = normalizeUsername(data.username, socket.username);
+    }
+
+    try {
+      const previousRoomId = getCurrentRoomId(socket);
+      if (previousRoomId && previousRoomId !== incomingRoomId) {
+        await leaveCurrentRoom(socket);
+      }
+
+      const trackedUser = users.get(socket.id) || {
         id: socket.userId,
         socketId: socket.id,
         username: socket.username,
         position: { x: 0, y: 1.6, z: 0 },
         rotation: { x: 0, y: 0, z: 0 }
       };
-      
-      users.set(socket.id, user);
-      socket.to(roomId).emit("user-joined", user);
-      
-      const roomUsers = Array.from(room.users)
-        .map(uid => Array.from(users.values()).find(u => u.id === uid))
-        .filter(u => u);
+
+      const room = await roomManager.joinRoom(
+        incomingRoomId,
+        socket.userId,
+        {
+          username: socket.username,
+          socketId: socket.id,
+          position: trackedUser.position,
+          rotation: trackedUser.rotation
+        },
+        data.password
+      );
+
+      socket.join(room.id);
+      socket.data.currentRoom = room.id;
+
+      users.set(socket.id, {
+        ...trackedUser,
+        id: socket.userId,
+        username: socket.username,
+        roomId: room.id
+      });
+
+      const joinedUser = {
+        id: socket.userId,
+        userId: socket.userId,
+        socketId: socket.id,
+        username: socket.username,
+        position: trackedUser.position,
+        rotation: trackedUser.rotation
+      };
+
+      const roomUsers = roomManager.getRoomUsers(room.id).map(formatRoomUser);
+      const roomObjects = roomManager.getRoomObjects(room.id);
+      const history = getRoomHistory(room.id);
+
+      socket.emit("room:joined", {
+        room: roomManager.getRoomSummary(room),
+        users: roomUsers,
+        objects: roomObjects,
+        history
+      });
+
+      // Backward compatibility
       socket.emit("room-users", roomUsers);
-      
-      await redis.recordEvent(roomId, { type: 'join', userId: socket.userId, username: socket.username });
-      
-      console.log(`${socket.username} joined room ${roomId}`);
+      socket.emit("room-objects", roomObjects);
+      socket.emit("chat:history", history);
+
+      socket.to(room.id).emit("user-joined", joinedUser);
+      io.to(room.id).emit("room-users", roomUsers);
+
+      const joinMsg = {
+        type: "system",
+        text: `${socket.username} joined`,
+        timestamp: Date.now()
+      };
+      pushRoomHistory(room.id, joinMsg);
+      io.to(room.id).emit("chat:message", joinMsg);
+
+      await redis.recordEvent(room.id, {
+        type: "join",
+        userId: socket.userId,
+        username: socket.username
+      });
+
+      emitPublicRoomList();
+      console.log(`${socket.username} joined room ${room.id}`);
     } catch (e) {
+      socket.emit("room-error", { message: e.message });
       socket.emit("error", { message: e.message });
     }
+  };
+
+  socket.on("join-room", handleJoinRoom);
+  socket.on("room:join", handleJoinRoom);
+
+  socket.on("leave-room", async () => {
+    await leaveCurrentRoom(socket);
+    socket.emit("room:left", { success: true });
   });
-  
-  socket.on("update-position", async (data) => {
+
+  socket.on("room:leave", async () => {
+    await leaveCurrentRoom(socket);
+    socket.emit("room:left", { success: true });
+  });
+
+  socket.on("chat:send", (data = {}) => {
+    const roomId = getCurrentRoomId(socket);
+    if (!roomId || !data.text) return;
+
+    const msg = {
+      type: "user",
+      userId: socket.userId,
+      username: socket.username,
+      text: String(data.text).slice(0, 200),
+      timestamp: Date.now()
+    };
+
+    pushRoomHistory(roomId, msg);
+    io.to(roomId).emit("chat:message", msg);
+  });
+
+  socket.on("update-position", async (data = {}) => {
+    const roomId = getCurrentRoomId(socket);
+    if (!roomId) return;
+
     const user = users.get(socket.id);
     if (!user) return;
-    
-    user.position = data.position;
-    user.rotation = data.rotation;
-    
-    socket.rooms.forEach(async room => {
-      if (room !== socket.id) {
-        socket.to(room).emit("user-moved", {
-          userId: socket.userId,
-          id: socket.userId, // backward compatibility
-          socketId: socket.id,
-          position: data.position,
-          rotation: data.rotation
-        });
-        await redis.recordEvent(room, { type: 'move', userId: socket.userId, ...data });
-      }
+
+    user.position = data.position || user.position;
+    user.rotation = data.rotation || user.rotation;
+    users.set(socket.id, user);
+
+    await roomManager.updateUser(roomId, socket.userId, {
+      position: user.position,
+      rotation: user.rotation,
+      username: socket.username,
+      socketId: socket.id
+    });
+
+    socket.to(roomId).emit("user-moved", {
+      userId: socket.userId,
+      id: socket.userId,
+      socketId: socket.id,
+      position: user.position,
+      rotation: user.rotation
+    });
+
+    await redis.recordEvent(roomId, {
+      type: "move",
+      userId: socket.userId,
+      position: user.position,
+      rotation: user.rotation
     });
   });
-  
-  const getObjectId = (object) => object?.id ?? object?.objectId;
 
-  socket.on("object-create", async (data) => {
-    socket.rooms.forEach(async room => {
-      if (room !== socket.id) {
-        io.to(room).emit("object-created", data);
-        await roomManager.addObject(room, data);
-        await redis.recordEvent(room, { type: 'object-create', userId: socket.userId, ...data });
-      }
+  socket.on("object-create", async (data = {}) => {
+    const roomId = getCurrentRoomId(socket);
+    if (!roomId) return;
+
+    const payload = {
+      ...data,
+      id: data.id || data.objectId || `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
+    };
+
+    await roomManager.addObject(roomId, payload);
+    socket.to(roomId).emit("object-created", payload);
+
+    await redis.recordEvent(roomId, {
+      type: "object-create",
+      userId: socket.userId,
+      ...payload
     });
   });
 
   socket.on("object-delete", async (data = {}) => {
+    const roomId = getCurrentRoomId(socket);
+    if (!roomId) return;
+
     const { objectId } = data;
     if (!objectId) return;
 
-    socket.rooms.forEach(async room => {
-      if (room !== socket.id) {
-        io.to(room).emit("object-deleted", { objectId });
+    await roomManager.removeObject(roomId, objectId);
+    socket.to(roomId).emit("object-deleted", { objectId });
 
-        const roomState = roomManager.rooms.get(room);
-        if (roomState && Array.isArray(roomState.objects)) {
-          roomState.objects = roomState.objects.filter(
-            (object) => String(getObjectId(object)) !== String(objectId)
-          );
-        }
-
-        await redis.recordEvent(room, { type: 'object-delete', userId: socket.userId, objectId });
-      }
+    await redis.recordEvent(roomId, {
+      type: "object-delete",
+      userId: socket.userId,
+      objectId
     });
   });
 
   socket.on("object-delete-all", async () => {
-    socket.rooms.forEach(async room => {
-      if (room !== socket.id) {
-        io.to(room).emit("object-deleted-all");
+    const roomId = getCurrentRoomId(socket);
+    if (!roomId) return;
 
-        const roomState = roomManager.rooms.get(room);
-        if (roomState && Array.isArray(roomState.objects)) {
-          roomState.objects = [];
-        }
+    await roomManager.clearObjects(roomId);
+    socket.to(roomId).emit("object-deleted-all");
 
-        await redis.recordEvent(room, { type: 'object-delete-all', userId: socket.userId });
-      }
+    await redis.recordEvent(roomId, {
+      type: "object-delete-all",
+      userId: socket.userId
     });
   });
 
   socket.on("object-move", async (data = {}) => {
+    const roomId = getCurrentRoomId(socket);
+    if (!roomId) return;
+
     const { objectId, position } = data;
     if (!objectId || !position) return;
 
-    socket.rooms.forEach(async room => {
-      if (room !== socket.id) {
-        socket.to(room).emit("object-moved", { objectId, position });
+    await roomManager.moveObject(roomId, objectId, position);
+    socket.to(roomId).emit("object-moved", { objectId, position });
 
-        const roomState = roomManager.rooms.get(room);
-        if (roomState && Array.isArray(roomState.objects)) {
-          const objectToMove = roomState.objects.find(
-            (object) => String(getObjectId(object)) === String(objectId)
-          );
-          if (objectToMove) objectToMove.position = position;
-        }
-
-        await redis.recordEvent(room, {
-          type: 'object-move',
-          userId: socket.userId,
-          objectId,
-          position
-        });
-      }
+    await redis.recordEvent(roomId, {
+      type: "object-move",
+      userId: socket.userId,
+      objectId,
+      position
     });
   });
 
@@ -329,31 +569,14 @@ io.on("connection", (socket) => {
 
   socket.on("compute-task", handleComputeTask);
   socket.on("worker-task", handleComputeTask);
-  
+
   socket.on("disconnect", async () => {
     const user = users.get(socket.id);
-    if (!user) return;
-    
-    console.log(`❌ ${user.username} disconnected`);
-    
-    // Broadcast leave notification to chat
-    const leaveMsg = {
-      type: 'system',
-      text: `${socket.username} left`,
-      timestamp: Date.now()
-    };
-    chatHistory.push(leaveMsg);
-    if (chatHistory.length > MAX_CHAT_HISTORY) chatHistory.shift();
-    io.emit('chat:message', leaveMsg);
-    
-    socket.rooms.forEach(async room => {
-      if (room !== socket.id) {
-        socket.to(room).emit("user-left", socket.userId);
-        await roomManager.leaveRoom(room, socket.userId);
-        await redis.recordEvent(room, { type: 'leave', userId: socket.userId });
-      }
-    });
-    
+    if (user) {
+      console.log(`❌ ${user.username} disconnected`);
+      await leaveCurrentRoom(socket);
+    }
+
     users.delete(socket.id);
   });
 });
@@ -363,7 +586,7 @@ server.listen(PORT, () => {
   console.log(`🚀 XR Collab server running on port ${PORT}`);
 });
 
-process.on('SIGTERM', () => {
+process.on("SIGTERM", () => {
   workerBridge.stop();
   server.close();
 });

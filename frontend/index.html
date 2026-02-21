@@ -33,10 +33,37 @@
     
     <div id="ui-overlay">
         <div id="join-panel">
-            <h2>🎮 加入协作房间</h2>
+            <h2>🎮 房间管理</h2>
+
+            <label class="room-label" for="username">昵称</label>
             <input type="text" id="username" placeholder="输入你的名字" value="用户">
-            <input type="text" id="roomId" placeholder="输入房间ID" value="大厅">
-            <button onclick="joinRoom()">进入房间</button>
+
+            <div class="room-section">
+                <h3>创建房间</h3>
+                <input type="text" id="createRoomName" placeholder="房间名称（如：产品评审）">
+                <div class="room-inline">
+                    <label><input type="checkbox" id="createRoomPublic" checked> 公开房间</label>
+                </div>
+                <input type="password" id="createRoomPassword" placeholder="房间密码（可选）">
+                <button onclick="createRoom()">创建并进入</button>
+            </div>
+
+            <div class="room-section">
+                <h3>加入房间</h3>
+                <input type="text" id="roomId" placeholder="输入房间ID（如：A1B2C3）">
+                <input type="password" id="joinRoomPassword" placeholder="房间密码（如有）">
+                <button onclick="joinRoom()">通过ID加入</button>
+            </div>
+
+            <div class="room-section">
+                <div class="room-list-header">
+                    <h3>公开房间列表</h3>
+                    <button class="secondary-btn" onclick="refreshRoomList()">刷新</button>
+                </div>
+                <ul id="public-room-list" class="public-room-list"></ul>
+            </div>
+
+            <div id="join-error" class="join-error"></div>
         </div>
         
         <div id="controls">
@@ -70,6 +97,11 @@
         </div>
         
         <div id="status" class="disconnected">未连接</div>
+
+        <div id="room-info" style="display: none;">
+            <span id="room-info-text"></span>
+            <button id="copy-room-id-btn" onclick="copyRoomInvite()">复制邀请</button>
+        </div>
         
         <button id="help-toggle" onclick="toggleHelp()">?</button>
         
@@ -148,11 +180,20 @@
             <h4>👥 在线用户</h4>
             <ul id="users-list"></ul>
         </div>
+
+        <!-- Voice Controls -->
+        <div id="voice-controls">
+            <button id="mic-toggle" class="voice-btn">🎤</button>
+            <div id="volume-indicator-container">
+                <div id="volume-indicator"></div>
+            </div>
+        </div>
         
         <div id="worker-result"></div>
     </div>
     
     <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/PointerLockControls.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/webxr/VRButton.js"></script>
