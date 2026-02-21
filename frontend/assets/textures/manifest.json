@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "generatedAt": "2026-02-21T12:30:00+08:00",
+  "notes": "Top 20% priority texture list for KTX2/Basis migration",
+  "assets": [
+    {
+      "id": "ground_grass",
+      "priority": "high",
+      "fallback": "assets/textures/ground/grass-fallback.png",
+      "ktx2": "assets/textures/ground/grass.ktx2",
+      "targetMemoryReduction": 0.5,
+      "mipmap": true
+    }
+  ]
+}

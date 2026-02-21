@@ -3,6 +3,15 @@ const crypto = require("crypto");
 const ROOM_ID_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const ROOM_ID_LENGTH = 6;
 
+function deepClone(value) {
+  if (value === undefined || value === null) return value;
+  return JSON.parse(JSON.stringify(value));
+}
+
+function getObjectId(object) {
+  return String(object?.id ?? object?.objectId ?? "");
+}
+
 class RoomManager {
   constructor(redis) {
     this.rooms = new Map();
@@ -57,6 +66,13 @@ class RoomManager {
       passwordHash: rawRoom.passwordHash || null,
       users,
       objects: Array.isArray(rawRoom.objects) ? rawRoom.objects : [],
+      whiteboards: Array.isArray(rawRoom.whiteboards)
+        ? rawRoom.whiteboards.map((wb) => ({
+            ...wb,
+            history: Array.isArray(wb?.history) ? wb.history : [],
+            redoStack: Array.isArray(wb?.redoStack) ? wb.redoStack : []
+          }))
+        : [],
       created: rawRoom.created || Date.now(),
       maxUsers: rawRoom.maxUsers || 50,
       persistent: rawRoom.persistent || false,
@@ -82,6 +98,41 @@ class RoomManager {
     await this.redis.set(`room:${room.id}`, JSON.stringify(this.serializeRoom(room)));
   }
 
+  normalizeObjectPayload(object = {}, actorId = null) {
+    const now = Date.now();
+    const normalized = deepClone(object) || {};
+
+    const objectId = getObjectId(normalized) || `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    normalized.id = objectId;
+    normalized.objectId = objectId;
+
+    normalized.position = normalized.position || { x: 0, y: 1, z: 0 };
+    normalized.rotation = normalized.rotation || { x: 0, y: 0, z: 0 };
+    normalized.scale = normalized.scale || { x: 1, y: 1, z: 1 };
+
+    if (normalized.color === undefined || normalized.color === null) {
+      normalized.color = 0xff0000;
+    }
+
+    if (!normalized.material || typeof normalized.material !== "object") {
+      normalized.material = { type: "MeshStandardMaterial" };
+    }
+
+    if (!normalized.createdAt) normalized.createdAt = now;
+    normalized._version = Number(normalized._version || 0);
+    normalized._updatedAt = Number(normalized._updatedAt || now);
+    normalized._lastModifiedBy = normalized._lastModifiedBy || null;
+
+    if (actorId) {
+      normalized._version += 1;
+      normalized._updatedAt = now;
+      normalized._lastModifiedBy = actorId;
+      normalized.createdBy = normalized.createdBy || actorId;
+    }
+
+    return normalized;
+  }
+
   async createRoom(options = {}) {
     const normalizedRoomId = this.normalizeRoomId(options.roomId);
     const roomId = normalizedRoomId || this.generateRoomId();
@@ -97,6 +148,7 @@ class RoomManager {
       passwordHash: this.hashPassword(options.password),
       users: new Map(),
       objects: [],
+      whiteboards: [],
       created: Date.now(),
       maxUsers: Number(options.maxUsers) || 50,
       persistent: Boolean(options.persistent),
@@ -153,6 +205,11 @@ class RoomManager {
     };
 
     room.users.set(userId, joinedUser);
+
+    if (!room.ownerId) {
+      room.ownerId = userId;
+    }
+
     await this.persistRoom(room);
     return room;
   }
@@ -176,6 +233,11 @@ class RoomManager {
 
     room.users.delete(userId);
 
+    if (room.ownerId === userId) {
+      const nextHost = room.users.values().next().value;
+      room.ownerId = nextHost ? nextHost.userId : null;
+    }
+
     if (room.users.size === 0 && !room.persistent) {
       this.rooms.delete(room.id);
       if (this.redis) {
@@ -187,45 +249,102 @@ class RoomManager {
     await this.persistRoom(room);
   }
 
-  async addObject(roomId, object) {
+  async getObject(roomId, objectId) {
     const room = await this.getRoom(roomId);
-    if (!room) return;
+    if (!room) return null;
 
-    room.objects.push(object);
+    const normalizedObjectId = String(objectId || "");
+    const object = room.objects.find(
+      (candidate) => String(candidate?.id ?? candidate?.objectId) === normalizedObjectId
+    );
+
+    return object ? deepClone(object) : null;
+  }
+
+  async upsertObject(roomId, object, actorId = null) {
+    const room = await this.getRoom(roomId);
+    if (!room) return null;
+
+    const normalized = this.normalizeObjectPayload(object, actorId);
+    const objectId = normalized.id;
+
+    const objectIndex = room.objects.findIndex(
+      (candidate) => String(candidate?.id ?? candidate?.objectId) === String(objectId)
+    );
+
+    if (objectIndex >= 0) {
+      room.objects[objectIndex] = normalized;
+    } else {
+      room.objects.push(normalized);
+    }
+
     await this.persistRoom(room);
+    return deepClone(normalized);
+  }
+
+  async addObject(roomId, object, actorId = null) {
+    return this.upsertObject(roomId, object, actorId);
   }
 
   async removeObject(roomId, objectId) {
     const room = await this.getRoom(roomId);
-    if (!room) return;
+    if (!room) return null;
 
-    room.objects = room.objects.filter(
-      (object) => String(object?.id ?? object?.objectId) !== String(objectId)
+    const normalizedObjectId = String(objectId || "");
+    const objectIndex = room.objects.findIndex(
+      (candidate) => String(candidate?.id ?? candidate?.objectId) === normalizedObjectId
     );
 
+    if (objectIndex < 0) {
+      return null;
+    }
+
+    const [removedObject] = room.objects.splice(objectIndex, 1);
     await this.persistRoom(room);
+    return deepClone(removedObject);
   }
 
   async clearObjects(roomId) {
     const room = await this.getRoom(roomId);
-    if (!room) return;
+    if (!room) return [];
 
+    const removedObjects = deepClone(room.objects || []);
     room.objects = [];
     await this.persistRoom(room);
+
+    return removedObjects;
   }
 
-  async moveObject(roomId, objectId, position) {
+  async updateObject(roomId, objectId, updates = {}, actorId = null) {
     const room = await this.getRoom(roomId);
-    if (!room) return;
+    if (!room) return null;
 
-    const objectToMove = room.objects.find(
-      (object) => String(object?.id ?? object?.objectId) === String(objectId)
+    const normalizedObjectId = String(objectId || "");
+    const objectIndex = room.objects.findIndex(
+      (candidate) => String(candidate?.id ?? candidate?.objectId) === normalizedObjectId
     );
 
-    if (objectToMove) {
-      objectToMove.position = position;
-      await this.persistRoom(room);
+    if (objectIndex < 0) {
+      return null;
     }
+
+    const currentObject = room.objects[objectIndex];
+    const mergedObject = {
+      ...deepClone(currentObject),
+      ...deepClone(updates),
+      id: currentObject.id || currentObject.objectId,
+      objectId: currentObject.id || currentObject.objectId
+    };
+
+    const normalized = this.normalizeObjectPayload(mergedObject, actorId);
+    room.objects[objectIndex] = normalized;
+
+    await this.persistRoom(room);
+    return deepClone(normalized);
+  }
+
+  async moveObject(roomId, objectId, position, actorId = null) {
+    return this.updateObject(roomId, objectId, { position }, actorId);
   }
 
   getRoomUsers(roomId) {
@@ -239,7 +358,223 @@ class RoomManager {
     const normalizedRoomId = this.normalizeRoomId(roomId);
     const room = this.rooms.get(normalizedRoomId);
     if (!room) return [];
-    return room.objects;
+    return deepClone(room.objects);
+  }
+
+  getRoomWhiteboards(roomId) {
+    const normalizedRoomId = this.normalizeRoomId(roomId);
+    const room = this.rooms.get(normalizedRoomId);
+    if (!room) return [];
+    return deepClone(room.whiteboards || []);
+  }
+
+  async upsertWhiteboard(roomId, whiteboard = {}, actorId = null) {
+    const room = await this.getRoom(roomId);
+    if (!room) return null;
+
+    const now = Date.now();
+    const whiteboardId = String(
+      whiteboard.id || whiteboard.whiteboardId || `wb_${now}_${Math.random().toString(36).slice(2, 7)}`
+    );
+
+    const existingWhiteboard = (room.whiteboards || []).find(
+      (candidate) => String(candidate?.id || candidate?.whiteboardId) === whiteboardId
+    );
+
+    const normalized = {
+      ...deepClone(existingWhiteboard || {}),
+      ...deepClone(whiteboard),
+      id: whiteboardId,
+      whiteboardId,
+      history: Array.isArray(whiteboard.history)
+        ? deepClone(whiteboard.history)
+        : Array.isArray(existingWhiteboard?.history)
+          ? deepClone(existingWhiteboard.history)
+          : [],
+      redoStack: Array.isArray(whiteboard.redoStack)
+        ? deepClone(whiteboard.redoStack)
+        : Array.isArray(existingWhiteboard?.redoStack)
+          ? deepClone(existingWhiteboard.redoStack)
+          : [],
+      position: whiteboard.position || existingWhiteboard?.position || { x: 0, y: 2, z: -5 },
+      rotation: whiteboard.rotation || existingWhiteboard?.rotation || { x: 0, y: 0, z: 0 },
+      scale: whiteboard.scale || existingWhiteboard?.scale || { x: 1, y: 1, z: 1 },
+      width: whiteboard.width || existingWhiteboard?.width || 1024,
+      height: whiteboard.height || existingWhiteboard?.height || 1024,
+      worldWidth: whiteboard.worldWidth || existingWhiteboard?.worldWidth || 4,
+      worldHeight: whiteboard.worldHeight || existingWhiteboard?.worldHeight || 4,
+      createdAt: whiteboard.createdAt || existingWhiteboard?.createdAt || now,
+      updatedAt: now,
+      updatedBy: actorId || whiteboard.updatedBy || null
+    };
+
+    const list = Array.isArray(room.whiteboards) ? room.whiteboards : [];
+    const index = list.findIndex(
+      (candidate) => String(candidate?.id || candidate?.whiteboardId) === whiteboardId
+    );
+
+    if (index >= 0) {
+      list[index] = normalized;
+    } else {
+      list.push(normalized);
+    }
+
+    room.whiteboards = list;
+    await this.persistRoom(room);
+    return deepClone(normalized);
+  }
+
+  async getWhiteboard(roomId, whiteboardId) {
+    const room = await this.getRoom(roomId);
+    if (!room) return null;
+
+    const normalizedId = String(whiteboardId || "");
+    const whiteboard = (room.whiteboards || []).find(
+      (candidate) => String(candidate?.id || candidate?.whiteboardId) === normalizedId
+    );
+
+    return whiteboard ? deepClone(whiteboard) : null;
+  }
+
+  async appendWhiteboardAction(roomId, whiteboardId, action, actorId = null) {
+    const room = await this.getRoom(roomId);
+    if (!room) return null;
+
+    const normalizedId = String(whiteboardId || "");
+    const list = Array.isArray(room.whiteboards) ? room.whiteboards : [];
+    const index = list.findIndex(
+      (candidate) => String(candidate?.id || candidate?.whiteboardId) === normalizedId
+    );
+
+    if (index < 0) return null;
+
+    const whiteboard = list[index];
+    const history = Array.isArray(whiteboard.history) ? deepClone(whiteboard.history) : [];
+    history.push(deepClone(action));
+
+    if (history.length > 500) {
+      history.splice(0, history.length - 500);
+    }
+
+    whiteboard.history = history;
+    whiteboard.redoStack = [];
+    whiteboard.updatedAt = Date.now();
+    whiteboard.updatedBy = actorId || null;
+    list[index] = whiteboard;
+    room.whiteboards = list;
+
+    await this.persistRoom(room);
+    return deepClone(whiteboard);
+  }
+
+  async setWhiteboardHistory(roomId, whiteboardId, history = [], actorId = null, redoStack = null) {
+    const room = await this.getRoom(roomId);
+    if (!room) return null;
+
+    const normalizedId = String(whiteboardId || "");
+    const list = Array.isArray(room.whiteboards) ? room.whiteboards : [];
+    const index = list.findIndex(
+      (candidate) => String(candidate?.id || candidate?.whiteboardId) === normalizedId
+    );
+
+    if (index < 0) return null;
+
+    list[index].history = Array.isArray(history) ? deepClone(history) : [];
+    if (Array.isArray(redoStack)) {
+      list[index].redoStack = deepClone(redoStack);
+    }
+    list[index].updatedAt = Date.now();
+    list[index].updatedBy = actorId || null;
+
+    room.whiteboards = list;
+    await this.persistRoom(room);
+
+    return deepClone(list[index]);
+  }
+
+  async undoWhiteboardAction(roomId, whiteboardId, actorId = null) {
+    const room = await this.getRoom(roomId);
+    if (!room) return null;
+
+    const normalizedId = String(whiteboardId || "");
+    const list = Array.isArray(room.whiteboards) ? room.whiteboards : [];
+    const index = list.findIndex(
+      (candidate) => String(candidate?.id || candidate?.whiteboardId) === normalizedId
+    );
+
+    if (index < 0) return null;
+
+    const whiteboard = list[index];
+    const history = Array.isArray(whiteboard.history) ? deepClone(whiteboard.history) : [];
+    const redoStack = Array.isArray(whiteboard.redoStack) ? deepClone(whiteboard.redoStack) : [];
+
+    if (!history.length) return deepClone(whiteboard);
+
+    const popped = history.pop();
+    redoStack.push(popped);
+
+    whiteboard.history = history;
+    whiteboard.redoStack = redoStack;
+    whiteboard.updatedAt = Date.now();
+    whiteboard.updatedBy = actorId || null;
+
+    list[index] = whiteboard;
+    room.whiteboards = list;
+    await this.persistRoom(room);
+
+    return deepClone(whiteboard);
+  }
+
+  async redoWhiteboardAction(roomId, whiteboardId, actorId = null) {
+    const room = await this.getRoom(roomId);
+    if (!room) return null;
+
+    const normalizedId = String(whiteboardId || "");
+    const list = Array.isArray(room.whiteboards) ? room.whiteboards : [];
+    const index = list.findIndex(
+      (candidate) => String(candidate?.id || candidate?.whiteboardId) === normalizedId
+    );
+
+    if (index < 0) return null;
+
+    const whiteboard = list[index];
+    const history = Array.isArray(whiteboard.history) ? deepClone(whiteboard.history) : [];
+    const redoStack = Array.isArray(whiteboard.redoStack) ? deepClone(whiteboard.redoStack) : [];
+
+    if (!redoStack.length) return deepClone(whiteboard);
+
+    const restored = redoStack.pop();
+    history.push(restored);
+
+    whiteboard.history = history;
+    whiteboard.redoStack = redoStack;
+    whiteboard.updatedAt = Date.now();
+    whiteboard.updatedBy = actorId || null;
+
+    list[index] = whiteboard;
+    room.whiteboards = list;
+    await this.persistRoom(room);
+
+    return deepClone(whiteboard);
+  }
+
+  async removeWhiteboard(roomId, whiteboardId) {
+    const room = await this.getRoom(roomId);
+    if (!room) return null;
+
+    const normalizedId = String(whiteboardId || "");
+    const list = Array.isArray(room.whiteboards) ? room.whiteboards : [];
+    const index = list.findIndex(
+      (candidate) => String(candidate?.id || candidate?.whiteboardId) === normalizedId
+    );
+
+    if (index < 0) return null;
+
+    const [removed] = list.splice(index, 1);
+    room.whiteboards = list;
+    await this.persistRoom(room);
+
+    return deepClone(removed);
   }
 
   getRoomList(includePrivate = false) {

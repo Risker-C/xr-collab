@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>WebXR 实时协作平台</title>
     <link rel="stylesheet" href="style.css">
+    <script src="lib/fullscreen.js"></script>
 </head>
 <body>
     <div id="canvas-container"></div>
@@ -78,10 +79,92 @@
             
             <hr>
             
+            <h4>🖍️ 白板工具</h4>
+            <div class="whiteboard-role-row">
+                <span>当前权限：</span>
+                <span id="whiteboard-role" class="role-member">成员</span>
+            </div>
+            <div id="whiteboard-lock-notice" class="whiteboard-notice"></div>
+
+            <div class="whiteboard-toolbar">
+                <button class="tool-btn active" data-tool="brush" onclick="whiteboardSystem.setTool('brush')">🖌️ 画笔 (B)</button>
+                <button class="tool-btn" data-tool="text" onclick="whiteboardSystem.setTool('text')">🔤 文本 (T)</button>
+                <button class="tool-btn" data-tool="arrow" onclick="whiteboardSystem.setTool('arrow')">↗️ 箭头</button>
+                <button class="tool-btn" data-tool="laser" onclick="whiteboardSystem.setTool('laser')">🔦 激光笔</button>
+                <button class="tool-btn" data-tool="eraser" onclick="whiteboardSystem.setTool('eraser')">🧽 橡皮擦 (E)</button>
+            </div>
+
+            <div class="brush-settings">
+                <label for="brushWidth">粗细</label>
+                <input type="range" id="brushWidth" min="1" max="20" value="4" onchange="whiteboardSystem.setBrushWidth(this.value)">
+
+                <label for="wbColorPicker">颜色</label>
+                <input type="color" id="wbColorPicker" value="#ff0000" onchange="whiteboardSystem.setBrushColor(this.value)">
+
+                <label for="wbFontSize">字体</label>
+                <input type="range" id="wbFontSize" min="12" max="72" value="30" onchange="setWhiteboardFontSize(this.value)">
+            </div>
+
+            <div class="whiteboard-manage-grid">
+                <button onclick="createWhiteboardNearCamera()">➕ 创建白板</button>
+                <button onclick="deleteActiveWhiteboard()">🗑️ 删除白板</button>
+                <button onclick="whiteboardSystem.clearActive()">🧹 清空白板</button>
+                <button onclick="whiteboardSystem.undo()">↩️ 白板撤销</button>
+                <button onclick="whiteboardSystem.redo()">↪️ 白板重做</button>
+            </div>
+
+            <div class="whiteboard-transform-grid">
+                <button onclick="moveActiveWhiteboard(0,0,-0.2)">前移</button>
+                <button onclick="moveActiveWhiteboard(0,0,0.2)">后移</button>
+                <button onclick="moveActiveWhiteboard(-0.2,0,0)">左移</button>
+                <button onclick="moveActiveWhiteboard(0.2,0,0)">右移</button>
+                <button onclick="moveActiveWhiteboard(0,0.1,0)">上移</button>
+                <button onclick="moveActiveWhiteboard(0,-0.1,0)">下移</button>
+                <button onclick="rotateActiveWhiteboard(-0.1)">左转</button>
+                <button onclick="rotateActiveWhiteboard(0.1)">右转</button>
+                <button onclick="scaleActiveWhiteboard(0.1)">放大</button>
+                <button onclick="scaleActiveWhiteboard(-0.1)">缩小</button>
+            </div>
+
+            <div class="whiteboard-list-box">
+                <div class="history-header">
+                    <h4>📋 白板列表</h4>
+                </div>
+                <ul id="whiteboard-list"></ul>
+            </div>
+
+            <div class="whiteboard-list-box">
+                <div class="history-header">
+                    <h4>🕘 白板历史</h4>
+                    <span id="whiteboard-history-count">0</span>
+                </div>
+                <ul id="whiteboard-history-list"></ul>
+            </div>
+
+            <hr>
+
             <div class="color-picker-section">
                 <label for="colorPicker">🎨 选择颜色</label>
                 <input type="color" id="colorPicker" value="#4CAF50">
+                <button onclick="applyColorToSelected()">应用到选中物体</button>
             </div>
+
+            <div class="material-picker-section">
+                <label for="materialPreset">🧱 材质预设</label>
+                <select id="materialPreset">
+                    <option value="standard">Standard</option>
+                    <option value="metal">Metal</option>
+                    <option value="matte">Matte</option>
+                    <option value="wireframe">Wireframe</option>
+                </select>
+                <button onclick="applyMaterialToSelected()">应用材质</button>
+            </div>
+            
+            <hr>
+
+            <h4>↩️ 撤销 / 重做</h4>
+            <button id="undo-btn" onclick="requestUndo()">撤销 (Ctrl/Cmd + Z)</button>
+            <button id="redo-btn" onclick="requestRedo()">重做 (Ctrl/Cmd + Shift + Z)</button>
             
             <hr>
             
@@ -95,6 +178,15 @@
             <button onclick="submitWorkerTask('geometry')">几何计算</button>
             <button onclick="submitWorkerTask('collision')">碰撞检测</button>
         </div>
+
+        <div id="operation-history-panel">
+            <div class="history-header">
+                <h4>🕘 操作历史</h4>
+                <span id="history-count">0 / 100</span>
+            </div>
+            <div id="operation-notice"></div>
+            <ul id="operation-history-list"></ul>
+        </div>
         
         <div id="status" class="disconnected">未连接</div>
 
@@ -103,6 +195,7 @@
             <button id="copy-room-id-btn" onclick="copyRoomInvite()">复制邀请</button>
         </div>
         
+        <button id="fullscreen-toggle" onclick="toggleFullscreen()" title="全屏模式 (F11)">⛶</button>
         <button id="help-toggle" onclick="toggleHelp()">?</button>
         
         <div id="help-panel">
@@ -163,6 +256,26 @@
                     <span class="help-key">Shift+Del</span>
                 </div>
                 <div class="help-item">
+                    <span class="help-desc">撤销</span>
+                    <span class="help-key">Ctrl/Cmd + Z</span>
+                </div>
+                <div class="help-item">
+                    <span class="help-desc">重做</span>
+                    <span class="help-key">Ctrl/Cmd + Shift + Z</span>
+                </div>
+                <div class="help-item">
+                    <span class="help-desc">白板画笔/文本/橡皮擦</span>
+                    <span class="help-key">B / T / E</span>
+                </div>
+                <div class="help-item">
+                    <span class="help-desc">旋转选中物体</span>
+                    <span class="help-key">Q / R</span>
+                </div>
+                <div class="help-item">
+                    <span class="help-desc">缩放选中物体</span>
+                    <span class="help-key">+ / -</span>
+                </div>
+                <div class="help-item">
                     <span class="help-desc">显示/隐藏帮助</span>
                     <span class="help-key">H</span>
                 </div>
@@ -171,7 +284,7 @@
             <div class="help-section">
                 <h4>🎨 颜色选择</h4>
                 <div class="help-item">
-                    <span class="help-desc">使用颜色选择器设置新物体的颜色</span>
+                    <span class="help-desc">使用颜色/材质设置修改选中物体外观</span>
                 </div>
             </div>
         </div>
@@ -194,11 +307,16 @@
     
     <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/PointerLockControls.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/webxr/VRButton.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/webxr/XRControllerModelFactory.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/cannon@0.6.2/build/cannon.min.js"></script>
-    <script src="app.js"></script>
+
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.1/build/three.module.js",
+            "three/addons/": "https://unpkg.com/three@0.160.1/examples/jsm/"
+        }
+    }
+    </script>
+    <script type="module" src="app.js"></script>
 </body>
 </html>

@@ -227,6 +227,23 @@ body {
     box-shadow: 0 6px 20px rgba(76, 175, 80, 0.5);
 }
 
+#controls button:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    box-shadow: none;
+    transform: none;
+}
+
+#controls select {
+    width: 100%;
+    margin: 8px 0;
+    padding: 10px;
+    border-radius: 8px;
+    border: 1px solid rgba(255,255,255,0.2);
+    background: rgba(255,255,255,0.08);
+    color: #fff;
+}
+
 #controls button.delete-btn {
     background: linear-gradient(135deg, #f44336 0%, #d32f2f 100%);
     box-shadow: 0 4px 12px rgba(244, 67, 54, 0.3);
@@ -248,6 +265,134 @@ body {
     color: #aaa;
     text-transform: uppercase;
     letter-spacing: 1px;
+}
+
+.whiteboard-role-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+    font-size: 12px;
+    color: #ced5ff;
+}
+
+.role-host,
+.role-member {
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    line-height: 1.6;
+}
+
+.role-host {
+    background: rgba(255, 193, 7, 0.28);
+    color: #ffdd80;
+}
+
+.role-member {
+    background: rgba(102, 126, 234, 0.24);
+    color: #d6dcff;
+}
+
+.whiteboard-notice {
+    min-height: 16px;
+    margin-bottom: 8px;
+    color: #ffcf85;
+    font-size: 12px;
+}
+
+.whiteboard-toolbar {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+    margin-bottom: 10px;
+}
+
+#controls button.tool-btn {
+    margin: 0;
+    padding: 9px 8px;
+    font-size: 12px;
+    background: linear-gradient(135deg, #36407a 0%, #515ea5 100%);
+    box-shadow: none;
+}
+
+#controls button.tool-btn.active {
+    background: linear-gradient(135deg, #667eea 0%, #8c6bda 100%);
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.2) inset;
+}
+
+.brush-settings {
+    display: grid;
+    grid-template-columns: 48px 1fr;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 10px;
+    padding: 8px;
+    border-radius: 8px;
+    background: rgba(255,255,255,0.06);
+}
+
+.brush-settings label {
+    font-size: 12px;
+    color: #d3d9ff;
+}
+
+.brush-settings input[type="range"],
+.brush-settings input[type="color"] {
+    width: 100%;
+}
+
+.whiteboard-manage-grid,
+.whiteboard-transform-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+    margin-bottom: 10px;
+}
+
+#controls .whiteboard-transform-grid button {
+    margin: 0;
+    padding: 8px;
+    font-size: 12px;
+    background: linear-gradient(135deg, #2f8f83 0%, #317fb1 100%);
+}
+
+.whiteboard-list-box {
+    margin-top: 8px;
+    padding: 8px;
+    border-radius: 8px;
+    background: rgba(255,255,255,0.05);
+}
+
+#whiteboard-list,
+#whiteboard-history-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    max-height: 120px;
+    overflow-y: auto;
+}
+
+#whiteboard-list li,
+#whiteboard-history-list li {
+    margin-bottom: 6px;
+    border-radius: 6px;
+    background: rgba(255,255,255,0.08);
+    padding: 6px;
+    font-size: 12px;
+}
+
+#whiteboard-list li button {
+    width: 100%;
+    margin: 0;
+    padding: 6px;
+    font-size: 12px;
+    background: rgba(102, 126, 234, 0.5);
+    box-shadow: none;
+}
+
+#whiteboard-list li.active-board {
+    border-left: 3px solid #ffcf85;
 }
 
 /* Color Picker Section */
@@ -274,6 +419,17 @@ body {
 #colorPicker:hover {
     border-color: #667eea;
     box-shadow: 0 0 15px rgba(102, 126, 234, 0.4);
+}
+
+.material-picker-section {
+    margin: 12px 0;
+}
+
+.material-picker-section label {
+    display: block;
+    margin-bottom: 8px;
+    font-size: 13px;
+    color: #ccc;
 }
 
 /* Status Badge */
@@ -373,6 +529,65 @@ body {
 #users-list li:hover {
     background: rgba(255,255,255,0.1);
     transform: translateX(5px);
+}
+
+#operation-history-panel {
+    position: absolute;
+    top: 20px;
+    left: 280px;
+    width: 300px;
+    max-height: 360px;
+    overflow: hidden;
+    background: linear-gradient(135deg, rgba(0,0,0,0.9) 0%, rgba(30,30,50,0.9) 100%);
+    border-radius: 14px;
+    padding: 12px;
+    pointer-events: all;
+    color: #fff;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+}
+
+.history-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+}
+
+#history-count {
+    font-size: 12px;
+    color: #b9c2ff;
+}
+
+#operation-notice {
+    min-height: 18px;
+    font-size: 12px;
+    color: #ffcf85;
+    margin-bottom: 6px;
+}
+
+#operation-history-list {
+    list-style: none;
+    max-height: 280px;
+    overflow-y: auto;
+    margin: 0;
+    padding: 0;
+}
+
+#operation-history-list li {
+    font-size: 12px;
+    padding: 6px 8px;
+    margin-bottom: 5px;
+    border-radius: 8px;
+    background: rgba(255,255,255,0.08);
+}
+
+#operation-history-list li.undone {
+    opacity: 0.58;
+    border-left: 3px solid #aaa;
+}
+
+#operation-history-list li.done {
+    border-left: 3px solid #4CAF50;
 }
 
 /* Worker Result Panel */
@@ -606,8 +821,17 @@ body {
     #controls,
     #users-panel,
     #help-panel,
-    #worker-result {
+    #worker-result,
+    #operation-history-panel {
         max-width: calc(100vw - 24px);
+    }
+
+    #operation-history-panel {
+        left: 10px;
+        top: auto;
+        bottom: 10px;
+        width: calc(100vw - 24px);
+        max-height: 220px;
     }
 
     #room-info {
@@ -618,3 +842,41 @@ body {
     }
 }
 
+
+/* Fullscreen Mode Styles */
+#fullscreen-toggle {
+    position: fixed;
+    top: 10px;
+    right: 50px;
+    background: rgba(0, 0, 0, 0.7);
+    color: white;
+    border: none;
+    padding: 10px 15px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 18px;
+    z-index: 1001;
+    transition: all 0.3s ease;
+}
+
+#fullscreen-toggle:hover {
+    background: rgba(0, 0, 0, 0.9);
+    transform: scale(1.1);
+}
+
+body.fullscreen-mode #controls {
+    transition: opacity 0.3s ease;
+}
+
+body.fullscreen-mode #chat-panel {
+    transition: opacity 0.3s ease;
+}
+
+body.fullscreen-mode #status {
+    transition: opacity 0.3s ease;
+}
+
+body.fullscreen-mode #canvas-container {
+    width: 100vw !important;
+    height: 100vh !important;
+}
