@@ -954,3 +954,25 @@ body.pointer {
     font-size: 11px;
     margin-top: 4px;
 }
+
+/* Drag and Drop File Upload Styles */
+#controls.drag-over {
+    border: 2px dashed #667eea;
+    background: rgba(102, 126, 234, 0.1);
+}
+
+#controls.drag-over::after {
+    content: '📁 拖放文件到这里上传';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 18px;
+    color: #667eea;
+    font-weight: bold;
+    pointer-events: none;
+    background: rgba(255, 255, 255, 0.9);
+    padding: 20px 40px;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+}

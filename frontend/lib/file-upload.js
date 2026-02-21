@@ -122,7 +122,58 @@ function displayFileIn3D(fileData) {
     );
 }
 
-// Export for use in HTML
+// Drag and drop support
+function initDragAndDrop() {
+    const dropZone = document.getElementById('controls');
+    if (!dropZone) return;
+
+    // Prevent default drag behaviors
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+        dropZone.addEventListener(eventName, preventDefaults, false);
+        document.body.addEventListener(eventName, preventDefaults, false);
+    });
+
+    function preventDefaults(e) {
+        e.preventDefault();
+        e.stopPropagation();
+    }
+
+    // Highlight drop zone when dragging over
+    ['dragenter', 'dragover'].forEach(eventName => {
+        dropZone.addEventListener(eventName, () => {
+            dropZone.classList.add('drag-over');
+        }, false);
+    });
+
+    ['dragleave', 'drop'].forEach(eventName => {
+        dropZone.addEventListener(eventName, () => {
+            dropZone.classList.remove('drag-over');
+        }, false);
+    });
+
+    // Handle dropped files
+    dropZone.addEventListener('drop', (e) => {
+        const dt = e.dataTransfer;
+        const files = dt.files;
+
+        if (files.length > 0) {
+            const fileInput = document.getElementById('file-input');
+            if (fileInput) {
+                // Create a new FileList-like object
+                const event = { target: { files: files, value: '' } };
+                handleFileSelect(event);
+            }
+        }
+    }, false);
+}
+
+// Initialize on DOM ready
 if (typeof window !== 'undefined') {
     window.handleFileSelect = handleFileSelect;
+    
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initDragAndDrop);
+    } else {
+        initDragAndDrop();
+    }
 }
