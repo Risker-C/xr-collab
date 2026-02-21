@@ -210,7 +210,8 @@ io.on("connection", (socket) => {
     socket.rooms.forEach(async room => {
       if (room !== socket.id) {
         socket.to(room).emit("user-moved", {
-          id: socket.userId,
+          userId: socket.userId,
+          id: socket.userId, // backward compatibility
           socketId: socket.id,
           position: data.position,
           rotation: data.rotation
@@ -220,25 +221,114 @@ io.on("connection", (socket) => {
     });
   });
   
+  const getObjectId = (object) => object?.id ?? object?.objectId;
+
   socket.on("object-create", async (data) => {
     socket.rooms.forEach(async room => {
       if (room !== socket.id) {
-        // 广播给房间内所有人（包括自己）
         io.to(room).emit("object-created", data);
         await roomManager.addObject(room, data);
         await redis.recordEvent(room, { type: 'object-create', userId: socket.userId, ...data });
       }
     });
   });
-  
-  socket.on("worker-task", async (data) => {
+
+  socket.on("object-delete", async (data = {}) => {
+    const { objectId } = data;
+    if (!objectId) return;
+
+    socket.rooms.forEach(async room => {
+      if (room !== socket.id) {
+        io.to(room).emit("object-deleted", { objectId });
+
+        const roomState = roomManager.rooms.get(room);
+        if (roomState && Array.isArray(roomState.objects)) {
+          roomState.objects = roomState.objects.filter(
+            (object) => String(getObjectId(object)) !== String(objectId)
+          );
+        }
+
+        await redis.recordEvent(room, { type: 'object-delete', userId: socket.userId, objectId });
+      }
+    });
+  });
+
+  socket.on("object-delete-all", async () => {
+    socket.rooms.forEach(async room => {
+      if (room !== socket.id) {
+        io.to(room).emit("object-deleted-all");
+
+        const roomState = roomManager.rooms.get(room);
+        if (roomState && Array.isArray(roomState.objects)) {
+          roomState.objects = [];
+        }
+
+        await redis.recordEvent(room, { type: 'object-delete-all', userId: socket.userId });
+      }
+    });
+  });
+
+  socket.on("object-move", async (data = {}) => {
+    const { objectId, position } = data;
+    if (!objectId || !position) return;
+
+    socket.rooms.forEach(async room => {
+      if (room !== socket.id) {
+        socket.to(room).emit("object-moved", { objectId, position });
+
+        const roomState = roomManager.rooms.get(room);
+        if (roomState && Array.isArray(roomState.objects)) {
+          const objectToMove = roomState.objects.find(
+            (object) => String(getObjectId(object)) === String(objectId)
+          );
+          if (objectToMove) objectToMove.position = position;
+        }
+
+        await redis.recordEvent(room, {
+          type: 'object-move',
+          userId: socket.userId,
+          objectId,
+          position
+        });
+      }
+    });
+  });
+
+  const handleComputeTask = async (data = {}) => {
+    const task = data.task || data.type;
+    const payload = data.payload || data.data;
+
+    if (!task) {
+      socket.emit("compute-result", {
+        taskId: data.taskId,
+        status: "failed",
+        error: "Task type is required"
+      });
+      return;
+    }
+
     try {
-      const result = await workerBridge.execute(data.task, data.payload);
+      const result = await workerBridge.execute(task, payload);
+      socket.emit("compute-result", {
+        taskId: data.taskId,
+        status: "completed",
+        result
+      });
+
       socket.emit("worker-result", { taskId: data.taskId, result });
     } catch (e) {
+      socket.emit("compute-result", {
+        taskId: data.taskId,
+        status: "failed",
+        error: e.message
+      });
+
       socket.emit("worker-error", { taskId: data.taskId, error: e.message });
     }
-  });
+  };
+
+  socket.on("compute-task", handleComputeTask);
+  socket.on("worker-task", handleComputeTask);
   
   socket.on("disconnect", async () => {
     const user = users.get(socket.id);
