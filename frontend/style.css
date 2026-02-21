@@ -880,3 +880,41 @@ body.fullscreen-mode #canvas-container {
     width: 100vw !important;
     height: 100vh !important;
 }
+
+/* Interactive Feedback Styles */
+.feedback-toast {
+    position: fixed;
+    top: 80px;
+    right: 20px;
+    padding: 12px 20px;
+    border-radius: 8px;
+    color: white;
+    font-size: 14px;
+    z-index: 10000;
+    transition: opacity 0.3s ease;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+}
+
+.feedback-info {
+    background: rgba(33, 150, 243, 0.9);
+}
+
+.feedback-success {
+    background: rgba(76, 175, 80, 0.9);
+}
+
+.feedback-error {
+    background: rgba(244, 67, 54, 0.9);
+}
+
+.feedback-warning {
+    background: rgba(255, 152, 0, 0.9);
+}
+
+body {
+    cursor: default;
+}
+
+body.pointer {
+    cursor: pointer !important;
+}
