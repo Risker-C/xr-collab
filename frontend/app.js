@@ -1620,6 +1620,8 @@ window.addEventListener('DOMContentLoaded', async () => {
 
 window.createRoom = createRoom;
 window.joinRoom = joinRoom;
+window.currentRoom = currentRoom;
+window.currentUserId = currentUserId;
 window.refreshRoomList = refreshRoomList;
 window.joinPublicRoom = joinPublicRoom;
 window.copyRoomInvite = copyRoomInvite;

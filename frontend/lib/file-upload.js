@@ -7,6 +7,17 @@ async function handleFileSelect(event) {
 
     const statusDiv = document.getElementById('upload-status');
     
+    // Get room and user info from app.js
+    const currentRoom = window.currentRoom;
+    const currentUserId = window.currentUserId;
+    const username = document.getElementById('username')?.value || '用户';
+    
+    if (!currentRoom) {
+        statusDiv.textContent = '❌ 请先加入房间';
+        statusDiv.style.color = 'red';
+        return;
+    }
+    
     // Validate file
     const maxSize = 100 * 1024 * 1024; // 100MB
     if (file.size > maxSize) {
@@ -27,9 +38,12 @@ async function handleFileSelect(event) {
     statusDiv.style.color = '#4CAF50';
 
     try {
-        // Create FormData
+        // Create FormData with required fields
         const formData = new FormData();
         formData.append('file', file);
+        formData.append('roomId', currentRoom);
+        formData.append('uploaderId', currentUserId || 'unknown');
+        formData.append('uploaderName', username);
 
         // Upload to backend
         const response = await fetch('/api/files/upload', {
@@ -38,7 +52,8 @@ async function handleFileSelect(event) {
         });
 
         if (!response.ok) {
-            throw new Error(`Upload failed: ${response.status}`);
+            const errorData = await response.json();
+            throw new Error(errorData.error || `Upload failed: ${response.status}`);
         }
 
         const result = await response.json();
@@ -47,8 +62,8 @@ async function handleFileSelect(event) {
         statusDiv.textContent = `✅ 上传成功: ${file.name}`;
         statusDiv.style.color = '#4CAF50';
 
-        // Display file in 3D scene
-        displayFileIn3D(result);
+        // Display file in 3D scene (backend returns { file: {...}, object: {...} })
+        displayFileIn3D(result.file);
 
         // Clear status after 3 seconds
         setTimeout(() => {
@@ -74,10 +89,10 @@ function displayFileIn3D(fileData) {
     // Create a plane to display the image/PDF
     const geometry = new THREE.PlaneGeometry(2, 2);
     
-    // Load texture
+    // Load texture (fileData.id not fileData.fileId)
     const loader = new THREE.TextureLoader();
     loader.load(
-        `/api/files/${fileData.fileId}`,
+        `/api/files/${fileData.id}`,
         (texture) => {
             // Create material with texture
             const material = new THREE.MeshBasicMaterial({
@@ -99,21 +114,14 @@ function displayFileIn3D(fileData) {
             
             // Add to scene
             plane.userData.interactive = true;
-            plane.userData.fileId = fileData.fileId;
-            plane.userData.fileName = fileData.fileName;
+            plane.userData.fileId = fileData.id;
+            plane.userData.fileName = fileData.originalName || fileData.id;
             scene.add(plane);
 
-            console.log(`✅ File displayed in 3D: ${fileData.fileName}`);
+            console.log(`✅ File displayed in 3D: ${fileData.originalName}`);
             
-            // Notify via socket if connected
-            if (socket && socket.connected) {
-                socket.emit('file-uploaded', {
-                    fileId: fileData.fileId,
-                    fileName: fileData.fileName,
-                    position: plane.position,
-                    rotation: plane.rotation
-                });
-            }
+            // Backend already emits file:uploaded and object-created events
+            // No need to emit again from frontend
         },
         undefined,
         (error) => {
