@@ -39,6 +39,10 @@ const users = new Map();
 let currentRoom = null;
 let currentUserId = null;
 
+// Position sync throttling (P4 performance fix)
+let lastPosSync = 0;
+let lastPos = new THREE.Vector3();
+
 const materialRegistry = new MaterialRegistry();
 const geometryRegistry = new GeometryRegistry();
 
@@ -396,14 +400,21 @@ function animate() {
         controls.moveForward(-velocity.z * delta);
     }
 
+    // Position sync with throttling (P4 performance fix)
     if (socket?.connected && currentRoom) {
+        const now = performance.now();
         const pos = camera.position;
         const rot = camera.rotation;
-
-        socket.emit('update-position', {
-            position: { x: pos.x, y: pos.y, z: pos.z },
-            rotation: { x: rot.x, y: rot.y, z: rot.z }
-        });
+        
+        // Throttle to ~12.5Hz (80ms) and skip small movements
+        if (now - lastPosSync >= 80 && lastPos.distanceTo(pos) >= 0.02) {
+            socket.emit('update-position', {
+                position: { x: pos.x, y: pos.y, z: pos.z },
+                rotation: { x: rot.x, y: rot.y, z: rot.z }
+            });
+            lastPosSync = now;
+            lastPos.copy(pos);
+        }
     }
 
     cullingOptimizer.update();
