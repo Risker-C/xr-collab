@@ -43,16 +43,63 @@ class WorkerBridge {
     const worker = this.getHealthyWorker();
     if (!worker) throw new Error('No healthy workers available');
 
+    const runOnWorker = async (targetWorker) => {
+      // v2 worker protocol: submit to /tasks then poll /tasks/:id
+      try {
+        const submitRes = await axios.post(
+          `${targetWorker.url}/tasks`,
+          { type: task, payload: data },
+          { timeout: 10000 }
+        );
+
+        const taskId = submitRes.data?.id;
+        if (!taskId) {
+          // Some deployments may return direct result
+          return submitRes.data?.result ?? submitRes.data;
+        }
+
+        const maxWaitMs = 30000;
+        const pollIntervalMs = 500;
+        const startedAt = Date.now();
+
+        while (Date.now() - startedAt < maxWaitMs) {
+          const pollRes = await axios.get(`${targetWorker.url}/tasks/${taskId}`, { timeout: 10000 });
+          const status = pollRes.data?.status;
+
+          if (status === 'completed') {
+            return pollRes.data?.result ?? pollRes.data;
+          }
+
+          if (status === 'failed' || status === 'error') {
+            throw new Error(pollRes.data?.error || 'Worker task failed');
+          }
+
+          await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
+        }
+
+        throw new Error('Worker task timeout');
+      } catch (e) {
+        // Backward-compatible fallback for older worker protocol
+        if (e.response?.status === 404) {
+          const legacyRes = await axios.post(
+            `${targetWorker.url}/execute`,
+            { task, data },
+            { timeout: 30000 }
+          );
+          return legacyRes.data;
+        }
+        throw e;
+      }
+    };
+
     try {
-      const res = await axios.post(`${worker.url}/execute`, { task, data }, { timeout: 30000 });
-      return res.data;
+      return await runOnWorker(worker);
     } catch (e) {
       worker.healthy = false;
       const fallback = this.getHealthyWorker();
       if (!fallback) throw new Error('All workers failed');
-      
-      const res = await axios.post(`${fallback.url}/execute`, { task, data }, { timeout: 30000 });
-      return res.data;
+
+      return await runOnWorker(fallback);
     }
   }
 
