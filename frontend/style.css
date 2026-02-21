@@ -93,6 +93,94 @@ body {
     box-shadow: 0 6px 25px rgba(102, 126, 234, 0.6);
 }
 
+.room-label {
+    display: block;
+    font-size: 13px;
+    color: #bbb;
+    margin-top: 8px;
+}
+
+.room-section {
+    margin-top: 16px;
+    padding-top: 14px;
+    border-top: 1px solid rgba(255,255,255,0.12);
+}
+
+.room-section h3 {
+    font-size: 15px;
+    color: #ddd;
+    margin-bottom: 10px;
+}
+
+.room-inline {
+    margin: 8px 0;
+    color: #ddd;
+    font-size: 13px;
+}
+
+.room-list-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+#join-panel button.secondary-btn {
+    width: auto;
+    margin: 0;
+    padding: 8px 12px;
+    font-size: 12px;
+    background: rgba(255,255,255,0.15);
+    box-shadow: none;
+}
+
+.public-room-list {
+    list-style: none;
+    max-height: 180px;
+    overflow-y: auto;
+    margin-top: 8px;
+}
+
+.public-room-list li {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    align-items: center;
+    background: rgba(255,255,255,0.06);
+    border-radius: 8px;
+    padding: 10px;
+    margin-bottom: 8px;
+}
+
+.public-room-list .room-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    font-size: 12px;
+    color: #ddd;
+}
+
+.public-room-list li button {
+    width: auto !important;
+    margin: 0 !important;
+    padding: 8px 12px !important;
+    font-size: 12px !important;
+}
+
+.empty-room {
+    color: #999;
+    text-align: center;
+    padding: 10px;
+}
+
+.join-error {
+    margin-top: 12px;
+    color: #ff8080;
+    font-size: 13px;
+    min-height: 18px;
+    display: none;
+}
+
 /* Controls Panel */
 #controls {
     position: absolute;
@@ -214,6 +302,35 @@ body {
     box-shadow: 0 4px 15px rgba(244, 67, 54, 0.4);
 }
 
+#room-info {
+    position: absolute;
+    top: 72px;
+    right: 20px;
+    background: linear-gradient(135deg, rgba(0,0,0,0.9) 0%, rgba(30,30,50,0.9) 100%);
+    color: #fff;
+    padding: 10px 12px;
+    border-radius: 10px;
+    pointer-events: all;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.35);
+}
+
+#room-info-text {
+    font-size: 13px;
+}
+
+#copy-room-id-btn {
+    border: none;
+    border-radius: 6px;
+    padding: 6px 10px;
+    cursor: pointer;
+    font-size: 12px;
+    color: #fff;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
 /* Users Panel */
 #users-panel {
     position: absolute;
@@ -291,6 +408,23 @@ body {
     font-size: 13px;
     line-height: 1.6;
     border: 1px solid rgba(255,255,255,0.1);
+}
+
+.chat-user,
+.chat-system {
+    padding: 6px 8px;
+    margin-bottom: 4px;
+    border-radius: 6px;
+    font-size: 13px;
+}
+
+.chat-user {
+    background: rgba(255,255,255,0.08);
+}
+
+.chat-system {
+    background: rgba(102,126,234,0.25);
+    color: #d6dcff;
 }
 
 /* Help Panel */
@@ -440,5 +574,47 @@ body {
 .speaking {
     box-shadow: 0 0 15px #4CAF50 !important;
     border: 2px solid #4CAF50 !important;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.fade-in {
+    animation: fadeIn 0.5s ease-out;
+}
+
+@media (max-width: 768px) {
+    #join-panel {
+        width: calc(100vw - 24px);
+        padding: 18px;
+        max-height: calc(100vh - 24px);
+        overflow-y: auto;
+    }
+
+    #join-panel input {
+        width: 100%;
+    }
+
+    #controls,
+    #users-panel,
+    #help-panel,
+    #worker-result {
+        max-width: calc(100vw - 24px);
+    }
+
+    #room-info {
+        top: 64px;
+        right: 10px;
+        left: 10px;
+        justify-content: space-between;
+    }
 }
 

@@ -32,6 +32,25 @@ let accumulator = 0;
 const fixedStep = 1 / 60;
 const maxSubSteps = 10;
 
+function resolveBackendUrl() {
+    if (window.XR_BACKEND_URL) {
+        return window.XR_BACKEND_URL;
+    }
+
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+        return 'http://localhost:3001';
+    }
+
+    if (window.location.port === '3001') {
+        return window.location.origin;
+    }
+
+    return 'https://xr-collab-backend.onrender.com';
+}
+
+const BACKEND_URL = resolveBackendUrl();
+let currentUserId = null;
+
 // Initialize Three.js scene
 function initScene() {
     scene = new THREE.Scene();
@@ -264,47 +283,7 @@ function createAvatar(user) {
     return avatar;
 }
 
-function onKeyDown(event) {
-    switch (event.code) {
-        case 'KeyW':
-        case 'ArrowUp':
-            moveForward = true;
-            break;
-        case 'KeyS':
-        case 'ArrowDown':
-            moveBackward = true;
-            break;
-        case 'KeyA':
-        case 'ArrowLeft':
-            moveLeft = true;
-            break;
-        case 'KeyD':
-        case 'ArrowRight':
-            moveRight = true;
-            break;
-    }
-}
-
-function onKeyUp(event) {
-    switch (event.code) {
-        case 'KeyW':
-        case 'ArrowUp':
-            moveForward = false;
-            break;
-        case 'KeyS':
-        case 'ArrowDown':
-            moveBackward = false;
-            break;
-        case 'KeyA':
-        case 'ArrowLeft':
-            moveLeft = false;
-            break;
-        case 'KeyD':
-        case 'ArrowRight':
-            moveRight = false;
-            break;
-    }
-}
+// keyboard handlers are defined below
 
 function animate() {
     const delta = clock.getDelta();
@@ -522,7 +501,7 @@ function onMouseUp(event) {
 
 // Socket.IO connection
 function initSocket() {
-    socket = io('https://xr-collab-backend.onrender.com', {
+    socket = io(BACKEND_URL, {
         transports: ['polling', 'websocket'],
         reconnection: true,
         reconnectionDelay: 1000,
@@ -531,24 +510,62 @@ function initSocket() {
 
     socket.on('connect', () => {
         updateStatus('Connected', true);
+        socket.emit('room:list');
+        refreshRoomList();
     });
 
     socket.on('disconnect', () => {
         updateStatus('Disconnected', false);
     });
 
-    socket.on('room-users', (roomUsers) => {
-        roomUsers.forEach(user => {
-            if (user.id !== socket.id && !users.has(user.id)) {
-                addRemoteUser(user);
-            }
-        });
+    socket.on('room-list', (rooms) => {
+        renderPublicRoomList(rooms);
+    });
+
+    socket.on('room-error', (payload = {}) => {
+        showJoinError(payload.message || '房间操作失败');
+    });
+
+    socket.on('room:joined', (payload = {}) => {
+        const joinedRoom = payload.room || {};
+        currentRoom = joinedRoom.id || null;
+
+        clearSceneObjects();
+        clearRemoteUsers();
+        loadRoomObjects(payload.objects || []);
+
+        const roomUsers = payload.users || [];
+        syncRoomUsers(roomUsers);
+        updateUsersList(roomUsers);
+
+        showInRoomUI(joinedRoom);
+        updateRoomInfo(joinedRoom);
+        showJoinError('');
+
+        if (currentRoom) {
+            const url = new URL(window.location.href);
+            url.searchParams.set('room', currentRoom);
+            window.history.replaceState({}, '', url);
+        }
+
+        if (Array.isArray(payload.history)) {
+            renderChatHistory(payload.history);
+        }
+    });
+
+    socket.on('room-users', (roomUsers = []) => {
+        syncRoomUsers(roomUsers);
         updateUsersList(roomUsers);
     });
 
+    socket.on('room-objects', (objects = []) => {
+        loadRoomObjects(objects);
+    });
+
     socket.on('user-joined', (user) => {
-        console.log('User joined:', user.username);
-        addRemoteUser(user);
+        if (user && user.socketId !== socket.id) {
+            addRemoteUser(user);
+        }
     });
 
     socket.on('user-moved', (data) => {
@@ -578,17 +595,7 @@ function initSocket() {
     });
 
     socket.on('object-deleted-all', () => {
-        const objectsToRemove = scene.children.filter(obj => 
-            obj.userData.objectId && obj.type === 'Mesh'
-        );
-        objectsToRemove.forEach(obj => {
-            const body = physicsBodies.get(obj);
-            if (body) {
-                world.removeBody(body);
-                physicsBodies.delete(obj);
-            }
-            scene.remove(obj);
-        });
+        clearSceneObjects();
     });
 
     socket.on('object-moved', (data) => {
@@ -601,7 +608,22 @@ function initSocket() {
                 data.position.y,
                 data.position.z
             );
+
+            const body = physicsBodies.get(objectToMove);
+            if (body) {
+                body.position.set(data.position.x, data.position.y, data.position.z);
+                body.velocity.set(0, 0, 0);
+                body.angularVelocity.set(0, 0, 0);
+            }
         }
+    });
+
+    socket.on('chat:history', (history = []) => {
+        renderChatHistory(history);
+    });
+
+    socket.on('chat:message', (message) => {
+        appendChatMessage(message);
     });
 
     socket.on('compute-result', (result) => {
@@ -610,18 +632,226 @@ function initSocket() {
     });
 }
 
-function joinRoom() {
-    const username = document.getElementById('username').value || '用户';
-    const roomId = document.getElementById('roomId').value || '大厅';
-    
-    currentRoom = roomId;
-    
-    // 直接加入房间，不需要认证
-    socket.emit('join-room', { roomId, username });
-    
+function showJoinError(message) {
+    const errorEl = document.getElementById('join-error');
+    if (!errorEl) return;
+
+    errorEl.textContent = message || '';
+    errorEl.style.display = message ? 'block' : 'none';
+}
+
+function showInRoomUI(room = {}) {
     document.getElementById('join-panel').style.display = 'none';
     document.getElementById('controls').style.display = 'block';
     document.getElementById('help-toggle').style.display = 'block';
+
+    const roomInfo = document.getElementById('room-info');
+    if (roomInfo) {
+        roomInfo.style.display = 'flex';
+    }
+}
+
+function updateRoomInfo(room = {}) {
+    const infoEl = document.getElementById('room-info-text');
+    if (!infoEl || !room.id) return;
+
+    const roomName = room.name ? `${room.name} · ` : '';
+    infoEl.textContent = `房间：${roomName}${room.id}`;
+}
+
+function clearSceneObjects() {
+    const objectsToRemove = scene.children.filter(obj => 
+        obj.userData && obj.userData.objectId && obj.type === 'Mesh'
+    );
+
+    objectsToRemove.forEach(obj => {
+        const body = physicsBodies.get(obj);
+        if (body) {
+            world.removeBody(body);
+            physicsBodies.delete(obj);
+        }
+        scene.remove(obj);
+    });
+
+    selectedObject = null;
+}
+
+function clearRemoteUsers() {
+    users.forEach((avatar) => {
+        scene.remove(avatar);
+    });
+    users.clear();
+}
+
+function syncRoomUsers(roomUsers = []) {
+    const remoteUserMap = new Map();
+
+    roomUsers.forEach((roomUser) => {
+        const userId = roomUser.id || roomUser.userId;
+        if (!userId) return;
+
+        if (roomUser.socketId === socket.id) {
+            currentUserId = userId;
+            return;
+        }
+
+        remoteUserMap.set(userId, { ...roomUser, id: userId });
+    });
+
+    Array.from(users.keys()).forEach((userId) => {
+        if (!remoteUserMap.has(userId)) {
+            removeRemoteUser(userId);
+        }
+    });
+
+    remoteUserMap.forEach((roomUser, userId) => {
+        if (!users.has(userId)) {
+            addRemoteUser(roomUser);
+        } else {
+            updateRemoteUser({
+                userId,
+                position: roomUser.position,
+                rotation: roomUser.rotation || { x: 0, y: 0, z: 0 }
+            });
+        }
+    });
+}
+
+function loadRoomObjects(objects = []) {
+    objects.forEach((objectData) => {
+        createObject(objectData);
+    });
+}
+
+async function refreshRoomList() {
+    try {
+        const response = await fetch(`${BACKEND_URL}/api/rooms`);
+        if (!response.ok) return;
+
+        const rooms = await response.json();
+        renderPublicRoomList(rooms);
+    } catch (error) {
+        console.warn('Failed to load room list:', error.message);
+    }
+}
+
+function renderPublicRoomList(rooms = []) {
+    const listEl = document.getElementById('public-room-list');
+    if (!listEl) return;
+
+    if (!Array.isArray(rooms) || rooms.length === 0) {
+        listEl.innerHTML = '<li class="empty-room">暂无公开房间</li>';
+        return;
+    }
+
+    listEl.innerHTML = rooms.map(room => `
+        <li>
+            <div class="room-meta">
+                <strong>${room.name || room.id}</strong>
+                <span>ID: ${room.id} · ${room.userCount || 0}/${room.maxUsers || 50}</span>
+                <span>${room.hasPassword ? '🔒 需密码' : '🌐 公开'}</span>
+            </div>
+            <button onclick="joinPublicRoom('${room.id}', ${Boolean(room.hasPassword)})">加入</button>
+        </li>
+    `).join('');
+}
+
+async function createRoom() {
+    const username = (document.getElementById('username').value || '用户').trim();
+    const roomName = (document.getElementById('createRoomName').value || '').trim();
+    const password = (document.getElementById('createRoomPassword').value || '').trim();
+    const isPublic = document.getElementById('createRoomPublic').checked;
+
+    if (!username) {
+        showJoinError('请先输入昵称');
+        return;
+    }
+
+    try {
+        const response = await fetch(`${BACKEND_URL}/api/rooms`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                name: roomName || `${username} 的房间`,
+                password,
+                isPublic
+            })
+        });
+
+        const payload = await response.json();
+        if (!response.ok) {
+            throw new Error(payload.error || '创建房间失败');
+        }
+
+        document.getElementById('roomId').value = payload.id;
+        document.getElementById('joinRoomPassword').value = password;
+        await refreshRoomList();
+        joinRoom(payload.id, password);
+    } catch (error) {
+        showJoinError(error.message || '创建房间失败');
+    }
+}
+
+function joinPublicRoom(roomId, needPassword = false) {
+    if (!roomId) return;
+
+    document.getElementById('roomId').value = roomId;
+
+    if (needPassword) {
+        const password = window.prompt('该房间需要密码，请输入：', '');
+        if (password === null) return;
+        document.getElementById('joinRoomPassword').value = password;
+        joinRoom(roomId, password);
+        return;
+    }
+
+    joinRoom(roomId, '');
+}
+
+function joinRoom(predefinedRoomId = null, predefinedPassword = null) {
+    if (!socket || !socket.connected) {
+        showJoinError('尚未连接服务器，请稍后重试');
+        return;
+    }
+
+    const username = (document.getElementById('username').value || '用户').trim();
+    const roomId = (predefinedRoomId || document.getElementById('roomId').value || '').trim().toUpperCase();
+    const password = predefinedPassword !== null
+        ? predefinedPassword
+        : (document.getElementById('joinRoomPassword').value || '');
+
+    if (!username) {
+        showJoinError('请先输入昵称');
+        return;
+    }
+
+    if (!roomId) {
+        showJoinError('请输入房间ID');
+        return;
+    }
+
+    showJoinError('');
+    socket.emit('user:set-name', { username });
+    socket.emit('join-room', { roomId, username, password });
+}
+
+async function copyRoomInvite() {
+    if (!currentRoom) {
+        showJoinError('尚未加入房间');
+        return;
+    }
+
+    const inviteLink = `${window.location.origin}${window.location.pathname}?room=${encodeURIComponent(currentRoom)}`;
+    const inviteText = `加入我的XR房间\n房间ID: ${currentRoom}\n邀请链接: ${inviteLink}`;
+
+    try {
+        await navigator.clipboard.writeText(inviteText);
+        alert('房间邀请信息已复制');
+    } catch (error) {
+        window.prompt('复制失败，请手动复制：', inviteText);
+    }
 }
 
 function addRemoteUser(user) {
@@ -663,6 +893,14 @@ function removeRemoteUser(userId) {
 
 function createObject(data) {
     let geometry, material, mesh, shape;
+
+    const objectId = data.id || data.objectId || `${Date.now()}_${Math.random()}`;
+    const position = data.position || { x: 0, y: 1, z: 0 };
+
+    const existingObject = scene.children.find(obj => obj.userData.objectId === objectId);
+    if (existingObject) {
+        return existingObject;
+    }
     
     switch(data.type) {
         case 'cube':
@@ -694,15 +932,15 @@ function createObject(data) {
         color: data.color || 0xff0000 
     });
     mesh = new THREE.Mesh(geometry, material);
-    mesh.position.set(data.position.x, data.position.y, data.position.z);
-    mesh.userData = { objectId: data.id || Date.now(), type: data.type };
+    mesh.position.set(position.x, position.y, position.z);
+    mesh.userData = { objectId, type: data.type };
     scene.add(mesh);
     
     // 创建物理体
     const body = new CANNON.Body({
         mass: 1,
         shape: shape,
-        position: new CANNON.Vec3(data.position.x, data.position.y, data.position.z)
+        position: new CANNON.Vec3(position.x, position.y, position.z)
     });
     world.addBody(body);
     physicsBodies.set(mesh, body);
@@ -724,6 +962,10 @@ function createObjectOfType(type) {
     console.log(`创建${type}按钮被点击`);
     if (!socket || !socket.connected) {
         alert('未连接到服务器，请稍候重试');
+        return;
+    }
+    if (!currentRoom) {
+        alert('请先加入房间');
         return;
     }
     if (!camera) {
@@ -904,9 +1146,91 @@ function updateStatus(message, connected) {
 function updateUsersList(roomUsers) {
     const listEl = document.getElementById('users-list');
     if (roomUsers) {
-        listEl.innerHTML = roomUsers.map(u => 
-            `<li>${u.username} ${u.id === socket.id ? '(你)' : ''}</li>`
-        ).join('');
+        listEl.innerHTML = roomUsers.map(u => {
+            const userId = u.id || u.userId;
+            const isSelf = (u.socketId && socket && u.socketId === socket.id) || (currentUserId && userId === currentUserId);
+            return `<li>${u.username} ${isSelf ? '(你)' : ''}</li>`;
+        }).join('');
+    }
+}
+
+function appendChatMessage(message = {}) {
+    const chatMessages = document.getElementById('chat-messages');
+    if (!chatMessages) return;
+
+    const line = document.createElement('div');
+    line.className = message.type === 'system' ? 'chat-system' : 'chat-user';
+
+    if (message.type === 'system') {
+        line.textContent = `系统：${message.text || ''}`;
+    } else {
+        line.textContent = `${message.username || '用户'}：${message.text || ''}`;
+    }
+
+    chatMessages.appendChild(line);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+function renderChatHistory(history = []) {
+    const chatMessages = document.getElementById('chat-messages');
+    if (!chatMessages) return;
+
+    chatMessages.innerHTML = '';
+    history.forEach((msg) => appendChatMessage(msg));
+}
+
+function initChatUI() {
+    const chatPanel = document.getElementById('chat-panel');
+    const chatOpenBtn = document.getElementById('chat-open-btn');
+    const chatToggle = document.getElementById('chat-toggle');
+    const chatInput = document.getElementById('chat-input');
+    const chatSend = document.getElementById('chat-send');
+
+    if (!chatPanel || !chatOpenBtn || !chatToggle || !chatInput || !chatSend) {
+        return;
+    }
+
+    chatPanel.style.display = 'none';
+
+    chatOpenBtn.addEventListener('click', () => {
+        chatPanel.style.display = 'block';
+        chatOpenBtn.style.display = 'none';
+    });
+
+    chatToggle.addEventListener('click', () => {
+        chatPanel.style.display = 'none';
+        chatOpenBtn.style.display = 'block';
+    });
+
+    const sendMessage = () => {
+        const text = chatInput.value.trim();
+        if (!text || !socket || !currentRoom) return;
+        socket.emit('chat:send', { text });
+        chatInput.value = '';
+    };
+
+    chatSend.addEventListener('click', sendMessage);
+    chatInput.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+            sendMessage();
+        }
+    });
+
+    document.querySelectorAll('.emoji-btn').forEach((button) => {
+        button.addEventListener('click', () => {
+            chatInput.value += button.dataset.emoji || '';
+            chatInput.focus();
+        });
+    });
+}
+
+function initRoomPrefillFromUrl() {
+    const roomId = new URLSearchParams(window.location.search).get('room');
+    if (!roomId) return;
+
+    const roomIdInput = document.getElementById('roomId');
+    if (roomIdInput) {
+        roomIdInput.value = roomId.toUpperCase();
     }
 }
 
@@ -914,10 +1238,17 @@ function updateUsersList(roomUsers) {
 window.addEventListener('DOMContentLoaded', () => {
     initScene();
     initSocket();
+    initChatUI();
+    initRoomPrefillFromUrl();
+    refreshRoomList();
 });
 
 // 暴露函数到全局作用域供HTML调用
+window.createRoom = createRoom;
 window.joinRoom = joinRoom;
+window.refreshRoomList = refreshRoomList;
+window.joinPublicRoom = joinPublicRoom;
+window.copyRoomInvite = copyRoomInvite;
 window.createCube = createCube;
 window.createSphere = createSphere;
 window.createCylinder = createCylinder;
