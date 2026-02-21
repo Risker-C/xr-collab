@@ -1560,6 +1560,13 @@ window.addEventListener('DOMContentLoaded', async () => {
     if (typeof initFullscreenMode === 'function') {
         initFullscreenMode();
     }
+    
+    // Initialize interactive feedback system
+    if (typeof InteractiveFeedback === 'function' && scene && camera) {
+        window.feedbackSystem = new InteractiveFeedback(scene, camera);
+        console.log('✅ Interactive feedback system initialized');
+    }
+    
     refreshRoomList();
 });
 
