@@ -7,6 +7,7 @@ const socketIO = require("socket.io");
 const cors = require("cors");
 const jwt = require("jsonwebtoken");
 const { generateToken, requireHttpAuth } = require("./auth");
+const { asyncHandler, notFoundHandler, errorHandler } = require("./middleware");
 const RoomManager = require("./rooms");
 const WorkerBridge = require("./worker-bridge");
 const RedisStore = require("./redis-store");
@@ -1677,6 +1678,10 @@ io.on("connection", (socket) => {
     users.delete(socket.id);
   });
 });
+
+// Error handling middleware (must be last)
+app.use(notFoundHandler);
+app.use(errorHandler);
 
 const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => {
