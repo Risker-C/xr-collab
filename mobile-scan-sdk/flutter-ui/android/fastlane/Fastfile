@@ -1,0 +1,105 @@
+# Fastlane configuration for Android deployment
+
+default_platform(:android)
+
+platform :android do
+  desc "Deploy to Google Play Internal Testing"
+  lane :deploy_internal do
+    # Upload to Play Store Internal Testing track
+    upload_to_play_store(
+      track: 'internal',
+      aab: '../build/app/outputs/bundle/release/app-release.aab',
+      json_key_data: ENV['PLAY_STORE_CONFIG_JSON'],
+      skip_upload_apk: true,
+      skip_upload_metadata: true,
+      skip_upload_images: true,
+      skip_upload_screenshots: true,
+      release_status: 'draft'
+    )
+    
+    # Post to Slack
+    if ENV["SLACK_WEBHOOK"]
+      slack(
+        message: "Successfully uploaded Android build to Internal Testing! 🚀",
+        slack_url: ENV["SLACK_WEBHOOK"],
+        success: true
+      )
+    end
+  end
+  
+  desc "Deploy to Google Play Beta"
+  lane :deploy_beta do
+    # Promote from internal to beta
+    upload_to_play_store(
+      track: 'beta',
+      aab: '../build/app/outputs/bundle/release/app-release.aab',
+      json_key_data: ENV['PLAY_STORE_CONFIG_JSON'],
+      skip_upload_apk: true,
+      skip_upload_metadata: true,
+      skip_upload_images: true,
+      skip_upload_screenshots: true
+    )
+    
+    if ENV["SLACK_WEBHOOK"]
+      slack(
+        message: "Successfully promoted Android build to Beta! 🎉",
+        slack_url: ENV["SLACK_WEBHOOK"],
+        success: true
+      )
+    end
+  end
+  
+  desc "Deploy to Google Play Production"
+  lane :deploy_production do
+    # Promote to production
+    upload_to_play_store(
+      track: 'production',
+      aab: '../build/app/outputs/bundle/release/app-release.aab',
+      json_key_data: ENV['PLAY_STORE_CONFIG_JSON'],
+      skip_upload_apk: true,
+      skip_upload_metadata: false,
+      skip_upload_images: false,
+      skip_upload_screenshots: false
+    )
+    
+    if ENV["SLACK_WEBHOOK"]
+      slack(
+        message: "Successfully deployed Android build to Production! 🎊",
+        slack_url: ENV["SLACK_WEBHOOK"],
+        success: true
+      )
+    end
+  end
+  
+  desc "Build APK"
+  lane :build_apk do
+    gradle(
+      task: "assemble",
+      build_type: "Release"
+    )
+  end
+  
+  desc "Build App Bundle"
+  lane :build_bundle do
+    gradle(
+      task: "bundle",
+      build_type: "Release"
+    )
+  end
+  
+  desc "Run tests"
+  lane :test do
+    gradle(task: "test")
+  end
+  
+  # Error handling
+  error do |lane, exception, options|
+    if ENV["SLACK_WEBHOOK"]
+      slack(
+        message: "Android build failed: #{exception.message}",
+        slack_url: ENV["SLACK_WEBHOOK"],
+        success: false
+      )
+    end
+  end
+end

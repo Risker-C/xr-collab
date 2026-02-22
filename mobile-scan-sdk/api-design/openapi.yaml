@@ -1,0 +1,863 @@
+openapi: 3.0.3
+info:
+  title: XR Collab Mobile Scan SDK API
+  description: |
+    Backend API for mobile device compatibility, multi-LOD model delivery, and chunked upload support.
+    Designed for optimal performance on mobile devices with varying capabilities.
+  version: 1.0.0
+  contact:
+    name: XR Collab Backend Team
+    email: backend@xrcollab.com
+
+servers:
+  - url: https://api.xrcollab.com/v1
+    description: Production server
+  - url: https://staging-api.xrcollab.com/v1
+    description: Staging server
+  - url: http://localhost:8080/v1
+    description: Local development
+
+tags:
+  - name: Device
+    description: Device capability detection and profiling
+  - name: Model
+    description: 3D model delivery with LOD support
+  - name: Upload
+    description: Chunked file upload for large captures
+
+paths:
+  /api/device/capability:
+    post:
+      tags:
+        - Device
+      summary: Detect and grade device capabilities
+      description: |
+        Analyzes device specifications and returns a capability tier (Low/Medium/High/Ultra).
+        Also stores device profile for future optimizations and analytics.
+      operationId: detectDeviceCapability
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeviceCapabilityRequest'
+            examples:
+              iphone15Pro:
+                summary: iPhone 15 Pro
+                value:
+                  deviceId: "device-uuid-12345"
+                  platform: "iOS"
+                  osVersion: "17.2"
+                  deviceModel: "iPhone15,3"
+                  cpuCores: 6
+                  cpuFrequency: 3460
+                  gpuModel: "Apple A17 Pro GPU"
+                  ramMB: 8192
+                  screenWidth: 1179
+                  screenHeight: 2556
+                  screenDensity: 460
+                  supportedFeatures:
+                    - "ARKit"
+                    - "LiDAR"
+                    - "Metal3"
+                  batteryLevel: 85
+                  thermalState: "nominal"
+              androidMid:
+                summary: Mid-range Android
+                value:
+                  deviceId: "device-uuid-67890"
+                  platform: "Android"
+                  osVersion: "14"
+                  deviceModel: "SM-G991B"
+                  cpuCores: 8
+                  cpuFrequency: 2400
+                  gpuModel: "Adreno 660"
+                  ramMB: 6144
+                  screenWidth: 1080
+                  screenHeight: 2400
+                  screenDensity: 421
+                  supportedFeatures:
+                    - "ARCore"
+                    - "Vulkan"
+                  batteryLevel: 60
+                  thermalState: "fair"
+      responses:
+        '200':
+          description: Device capability successfully analyzed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceCapabilityResponse'
+              examples:
+                highTier:
+                  summary: High-tier device
+                  value:
+                    deviceId: "device-uuid-12345"
+                    tier: "High"
+                    score: 92
+                    capabilities:
+                      maxModelComplexity: 500000
+                      maxTextureSize: 4096
+                      recommendedLOD: 2
+                      supportedFormats:
+                        - "glTF"
+                        - "USDZ"
+                      maxConcurrentModels: 8
+                      realtimeCollaboration: true
+                      advancedShaders: true
+                    recommendations:
+                      enableHDR: true
+                      enableShadows: true
+                      enablePostProcessing: true
+                      targetFPS: 60
+                    profileId: "profile-abc123"
+                    createdAt: "2026-02-22T12:20:00Z"
+                mediumTier:
+                  summary: Medium-tier device
+                  value:
+                    deviceId: "device-uuid-67890"
+                    tier: "Medium"
+                    score: 68
+                    capabilities:
+                      maxModelComplexity: 200000
+                      maxTextureSize: 2048
+                      recommendedLOD: 1
+                      supportedFormats:
+                        - "glTF"
+                      maxConcurrentModels: 4
+                      realtimeCollaboration: true
+                      advancedShaders: false
+                    recommendations:
+                      enableHDR: false
+                      enableShadows: false
+                      enablePostProcessing: false
+                      targetFPS: 30
+                    profileId: "profile-def456"
+                    createdAt: "2026-02-22T12:20:00Z"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/model/{id}/lod/{level}:
+    get:
+      tags:
+        - Model
+      summary: Retrieve 3D model with specific LOD level
+      description: |
+        Returns a 3D model optimized for the requested Level of Detail (LOD).
+        LOD levels: 0 (lowest quality, smallest size) to 3 (highest quality, largest size).
+        Supports conditional requests via ETag for efficient caching.
+      operationId: getModelByLOD
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique model identifier
+          schema:
+            type: string
+            example: "model-xyz789"
+        - name: level
+          in: path
+          required: true
+          description: LOD level (0-3)
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 3
+            example: 1
+        - name: format
+          in: query
+          description: Preferred model format
+          schema:
+            type: string
+            enum: [glTF, USDZ, FBX]
+            default: glTF
+        - name: If-None-Match
+          in: header
+          description: ETag from previous request for cache validation
+          schema:
+            type: string
+            example: '"33a64df551425fcc55e4d42a148795d9f25f89d4"'
+      responses:
+        '200':
+          description: Model successfully retrieved
+          headers:
+            ETag:
+              description: Entity tag for cache validation
+              schema:
+                type: string
+                example: '"33a64df551425fcc55e4d42a148795d9f25f89d4"'
+            Cache-Control:
+              description: Cache directives
+              schema:
+                type: string
+                example: "public, max-age=86400"
+            Content-Length:
+              description: Size of the model file in bytes
+              schema:
+                type: integer
+                example: 2457600
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelLODResponse'
+              example:
+                modelId: "model-xyz789"
+                lodLevel: 1
+                format: "glTF"
+                downloadUrl: "https://cdn.xrcollab.com/models/model-xyz789/lod1.gltf"
+                metadata:
+                  vertices: 45000
+                  triangles: 75000
+                  textureSize: 2048
+                  fileSizeBytes: 2457600
+                  boundingBox:
+                    min: [-1.5, 0, -1.5]
+                    max: [1.5, 2.0, 1.5]
+                  materials: 3
+                  animations: 0
+                expiresAt: "2026-02-23T12:20:00Z"
+                etag: "33a64df551425fcc55e4d42a148795d9f25f89d4"
+        '304':
+          description: Not Modified - cached version is still valid
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/capture/upload/init:
+    post:
+      tags:
+        - Upload
+      summary: Initialize chunked upload session
+      description: |
+        Creates a new upload session for large capture files.
+        Returns an uploadId to be used for subsequent chunk uploads.
+      operationId: initChunkedUpload
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UploadInitRequest'
+            example:
+              fileName: "scan_20260222_122000.zip"
+              fileSize: 157286400
+              mimeType: "application/zip"
+              chunkSize: 5242880
+              metadata:
+                captureType: "room_scan"
+                deviceId: "device-uuid-12345"
+                timestamp: "2026-02-22T12:20:00Z"
+      responses:
+        '201':
+          description: Upload session created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadInitResponse'
+              example:
+                uploadId: "upload-abc123def456"
+                chunkSize: 5242880
+                totalChunks: 30
+                expiresAt: "2026-02-23T12:20:00Z"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '413':
+          description: File size exceeds maximum allowed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "FILE_TOO_LARGE"
+                message: "File size exceeds maximum of 500MB"
+                maxSizeBytes: 524288000
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/capture/upload/chunk:
+    post:
+      tags:
+        - Upload
+      summary: Upload a file chunk
+      description: |
+        Uploads a single chunk of a file. Chunks must be uploaded sequentially or in parallel
+        with proper chunk numbering. Supports resume on failure.
+      operationId: uploadChunk
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - uploadId
+                - chunkIndex
+                - chunk
+              properties:
+                uploadId:
+                  type: string
+                  description: Upload session ID from init
+                  example: "upload-abc123def456"
+                chunkIndex:
+                  type: integer
+                  description: Zero-based chunk index
+                  example: 5
+                chunk:
+                  type: string
+                  format: binary
+                  description: Binary chunk data
+                checksum:
+                  type: string
+                  description: MD5 checksum of chunk for integrity verification
+                  example: "5d41402abc4b2a76b9719d911017c592"
+      responses:
+        '200':
+          description: Chunk uploaded successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChunkUploadResponse'
+              example:
+                uploadId: "upload-abc123def456"
+                chunkIndex: 5
+                received: true
+                uploadedChunks: 6
+                totalChunks: 30
+                percentComplete: 20
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          description: Upload session not found or expired
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "UPLOAD_NOT_FOUND"
+                message: "Upload session not found or has expired"
+        '409':
+          description: Chunk already uploaded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "CHUNK_ALREADY_UPLOADED"
+                message: "Chunk 5 has already been uploaded"
+                chunkIndex: 5
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/capture/upload/complete:
+    post:
+      tags:
+        - Upload
+      summary: Complete chunked upload
+      description: |
+        Finalizes the upload session, assembles all chunks, and processes the file.
+        Returns the final resource URL.
+      operationId: completeChunkedUpload
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UploadCompleteRequest'
+            example:
+              uploadId: "upload-abc123def456"
+              finalChecksum: "098f6bcd4621d373cade4e832627b4f6"
+      responses:
+        '200':
+          description: Upload completed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadCompleteResponse'
+              example:
+                uploadId: "upload-abc123def456"
+                captureId: "capture-789xyz"
+                status: "processing"
+                resourceUrl: "https://api.xrcollab.com/v1/captures/capture-789xyz"
+                estimatedProcessingTime: 120
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          description: Upload session not found
+        '422':
+          description: Upload incomplete or corrupted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "UPLOAD_INCOMPLETE"
+                message: "Missing chunks: 5, 12, 28"
+                missingChunks: [5, 12, 28]
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/capture/upload/status/{uploadId}:
+    get:
+      tags:
+        - Upload
+      summary: Get upload session status
+      description: Check the status of an ongoing upload session
+      operationId: getUploadStatus
+      parameters:
+        - name: uploadId
+          in: path
+          required: true
+          schema:
+            type: string
+            example: "upload-abc123def456"
+      responses:
+        '200':
+          description: Upload status retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadStatusResponse'
+              example:
+                uploadId: "upload-abc123def456"
+                status: "uploading"
+                uploadedChunks: 18
+                totalChunks: 30
+                percentComplete: 60
+                uploadedBytes: 94371840
+                totalBytes: 157286400
+                createdAt: "2026-02-22T12:20:00Z"
+                expiresAt: "2026-02-23T12:20:00Z"
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+components:
+  schemas:
+    DeviceCapabilityRequest:
+      type: object
+      required:
+        - deviceId
+        - platform
+        - osVersion
+        - deviceModel
+        - cpuCores
+        - ramMB
+        - screenWidth
+        - screenHeight
+      properties:
+        deviceId:
+          type: string
+          description: Unique device identifier (UUID)
+          example: "device-uuid-12345"
+        platform:
+          type: string
+          enum: [iOS, Android, Windows, macOS]
+          example: "iOS"
+        osVersion:
+          type: string
+          description: Operating system version
+          example: "17.2"
+        deviceModel:
+          type: string
+          description: Device model identifier
+          example: "iPhone15,3"
+        cpuCores:
+          type: integer
+          minimum: 1
+          description: Number of CPU cores
+          example: 6
+        cpuFrequency:
+          type: integer
+          description: CPU frequency in MHz
+          example: 3460
+        gpuModel:
+          type: string
+          description: GPU model name
+          example: "Apple A17 Pro GPU"
+        ramMB:
+          type: integer
+          description: RAM size in megabytes
+          example: 8192
+        screenWidth:
+          type: integer
+          description: Screen width in pixels
+          example: 1179
+        screenHeight:
+          type: integer
+          description: Screen height in pixels
+          example: 2556
+        screenDensity:
+          type: integer
+          description: Screen density in DPI
+          example: 460
+        supportedFeatures:
+          type: array
+          items:
+            type: string
+          description: List of supported AR/graphics features
+          example: ["ARKit", "LiDAR", "Metal3"]
+        batteryLevel:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: Current battery level percentage
+          example: 85
+        thermalState:
+          type: string
+          enum: [nominal, fair, serious, critical]
+          description: Device thermal state
+          example: "nominal"
+
+    DeviceCapabilityResponse:
+      type: object
+      properties:
+        deviceId:
+          type: string
+          example: "device-uuid-12345"
+        tier:
+          type: string
+          enum: [Low, Medium, High, Ultra]
+          description: Device capability tier
+          example: "High"
+        score:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: Overall capability score
+          example: 92
+        capabilities:
+          type: object
+          properties:
+            maxModelComplexity:
+              type: integer
+              description: Maximum polygon count
+              example: 500000
+            maxTextureSize:
+              type: integer
+              description: Maximum texture resolution
+              example: 4096
+            recommendedLOD:
+              type: integer
+              minimum: 0
+              maximum: 3
+              description: Recommended LOD level
+              example: 2
+            supportedFormats:
+              type: array
+              items:
+                type: string
+              example: ["glTF", "USDZ"]
+            maxConcurrentModels:
+              type: integer
+              description: Max models in scene
+              example: 8
+            realtimeCollaboration:
+              type: boolean
+              example: true
+            advancedShaders:
+              type: boolean
+              example: true
+        recommendations:
+          type: object
+          properties:
+            enableHDR:
+              type: boolean
+              example: true
+            enableShadows:
+              type: boolean
+              example: true
+            enablePostProcessing:
+              type: boolean
+              example: true
+            targetFPS:
+              type: integer
+              example: 60
+        profileId:
+          type: string
+          description: Stored profile ID for future reference
+          example: "profile-abc123"
+        createdAt:
+          type: string
+          format: date-time
+          example: "2026-02-22T12:20:00Z"
+
+    ModelLODResponse:
+      type: object
+      properties:
+        modelId:
+          type: string
+          example: "model-xyz789"
+        lodLevel:
+          type: integer
+          minimum: 0
+          maximum: 3
+          example: 1
+        format:
+          type: string
+          enum: [glTF, USDZ, FBX]
+          example: "glTF"
+        downloadUrl:
+          type: string
+          format: uri
+          description: Pre-signed URL for model download
+          example: "https://cdn.xrcollab.com/models/model-xyz789/lod1.gltf"
+        metadata:
+          type: object
+          properties:
+            vertices:
+              type: integer
+              example: 45000
+            triangles:
+              type: integer
+              example: 75000
+            textureSize:
+              type: integer
+              description: Texture resolution
+              example: 2048
+            fileSizeBytes:
+              type: integer
+              example: 2457600
+            boundingBox:
+              type: object
+              properties:
+                min:
+                  type: array
+                  items:
+                    type: number
+                  example: [-1.5, 0, -1.5]
+                max:
+                  type: array
+                  items:
+                    type: number
+                  example: [1.5, 2.0, 1.5]
+            materials:
+              type: integer
+              example: 3
+            animations:
+              type: integer
+              example: 0
+        expiresAt:
+          type: string
+          format: date-time
+          description: URL expiration time
+          example: "2026-02-23T12:20:00Z"
+        etag:
+          type: string
+          example: "33a64df551425fcc55e4d42a148795d9f25f89d4"
+
+    UploadInitRequest:
+      type: object
+      required:
+        - fileName
+        - fileSize
+        - mimeType
+      properties:
+        fileName:
+          type: string
+          example: "scan_20260222_122000.zip"
+        fileSize:
+          type: integer
+          description: Total file size in bytes
+          example: 157286400
+        mimeType:
+          type: string
+          example: "application/zip"
+        chunkSize:
+          type: integer
+          description: Preferred chunk size in bytes (default 5MB)
+          default: 5242880
+          example: 5242880
+        metadata:
+          type: object
+          additionalProperties: true
+          description: Additional metadata about the capture
+          example:
+            captureType: "room_scan"
+            deviceId: "device-uuid-12345"
+            timestamp: "2026-02-22T12:20:00Z"
+
+    UploadInitResponse:
+      type: object
+      properties:
+        uploadId:
+          type: string
+          example: "upload-abc123def456"
+        chunkSize:
+          type: integer
+          example: 5242880
+        totalChunks:
+          type: integer
+          example: 30
+        expiresAt:
+          type: string
+          format: date-time
+          example: "2026-02-23T12:20:00Z"
+
+    ChunkUploadResponse:
+      type: object
+      properties:
+        uploadId:
+          type: string
+          example: "upload-abc123def456"
+        chunkIndex:
+          type: integer
+          example: 5
+        received:
+          type: boolean
+          example: true
+        uploadedChunks:
+          type: integer
+          description: Number of chunks uploaded so far
+          example: 6
+        totalChunks:
+          type: integer
+          example: 30
+        percentComplete:
+          type: integer
+          minimum: 0
+          maximum: 100
+          example: 20
+
+    UploadCompleteRequest:
+      type: object
+      required:
+        - uploadId
+      properties:
+        uploadId:
+          type: string
+          example: "upload-abc123def456"
+        finalChecksum:
+          type: string
+          description: MD5 checksum of complete file
+          example: "098f6bcd4621d373cade4e832627b4f6"
+
+    UploadCompleteResponse:
+      type: object
+      properties:
+        uploadId:
+          type: string
+          example: "upload-abc123def456"
+        captureId:
+          type: string
+          description: ID of the created capture resource
+          example: "capture-789xyz"
+        status:
+          type: string
+          enum: [processing, completed, failed]
+          example: "processing"
+        resourceUrl:
+          type: string
+          format: uri
+          example: "https://api.xrcollab.com/v1/captures/capture-789xyz"
+        estimatedProcessingTime:
+          type: integer
+          description: Estimated processing time in seconds
+          example: 120
+
+    UploadStatusResponse:
+      type: object
+      properties:
+        uploadId:
+          type: string
+          example: "upload-abc123def456"
+        status:
+          type: string
+          enum: [uploading, completed, failed, expired]
+          example: "uploading"
+        uploadedChunks:
+          type: integer
+          example: 18
+        totalChunks:
+          type: integer
+          example: 30
+        percentComplete:
+          type: integer
+          example: 60
+        uploadedBytes:
+          type: integer
+          example: 94371840
+        totalBytes:
+          type: integer
+          example: 157286400
+        createdAt:
+          type: string
+          format: date-time
+          example: "2026-02-22T12:20:00Z"
+        expiresAt:
+          type: string
+          format: date-time
+          example: "2026-02-23T12:20:00Z"
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error code
+          example: "INVALID_REQUEST"
+        message:
+          type: string
+          description: Human-readable error message
+          example: "Missing required field: deviceId"
+        details:
+          type: object
+          additionalProperties: true
+          description: Additional error details
+
+  responses:
+    BadRequest:
+      description: Invalid request parameters
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "INVALID_REQUEST"
+            message: "Missing required field: deviceId"
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "NOT_FOUND"
+            message: "Resource not found"
+
+    RateLimitExceeded:
+      description: Rate limit exceeded
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "RATE_LIMIT_EXCEEDED"
+            message: "Too many requests. Please try again later."
+            retryAfter: 60
+
+    InternalServerError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "INTERNAL_ERROR"
+            message: "An unexpected error occurred"
+
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token obtained from authentication endpoint
+
+security:
+  - BearerAuth: []

@@ -1,0 +1,20 @@
+{
+  "arFeatures": {
+    "bodyTracking": false,
+    "faceTracking": true,
+    "objectDetection": false,
+    "peopleOcclusion": false,
+    "sceneReconstruction": false,
+    "worldTracking": true
+  },
+  "arKitVersion": "3.0",
+  "deviceModel": "iPhone12,1",
+  "hasLiDAR": false,
+  "performance": {
+    "cpuCores": 6,
+    "gpuFamily": "Apple6",
+    "totalRAM": 4.0
+  },
+  "tier": 1,
+  "timestamp": "2026-02-22T12:18:00Z"
+}

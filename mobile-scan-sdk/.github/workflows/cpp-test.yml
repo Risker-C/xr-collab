@@ -1,0 +1,244 @@
+name: C++ Unit Tests
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'cpp-core/**'
+      - '.github/workflows/cpp-test.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'cpp-core/**'
+  workflow_dispatch:
+
+env:
+  BUILD_TYPE: Release
+  CMAKE_VERSION: '3.20'
+
+jobs:
+  test-linux:
+    name: Test on Linux
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cpp-core
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build clang-15 libc++-15-dev libc++abi-15-dev
+      
+      - name: Configure CMake
+        run: |
+          cmake -B build \
+            -G Ninja \
+            -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
+            -DCMAKE_CXX_COMPILER=clang++-15 \
+            -DBUILD_TESTS=ON \
+            -DBUILD_STUBS=ON
+      
+      - name: Build
+        run: cmake --build build --config ${{ env.BUILD_TYPE }}
+      
+      - name: Run tests
+        run: |
+          cd build
+          ctest --output-on-failure --verbose
+      
+      - name: Generate test report
+        if: always()
+        run: |
+          cd build
+          ctest --output-junit test-results.xml || true
+      
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-linux
+          path: cpp-core/build/test-results.xml
+          retention-days: 30
+  
+  test-macos:
+    name: Test on macOS
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: cpp-core
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Install dependencies
+        run: |
+          brew install cmake ninja
+      
+      - name: Configure CMake
+        run: |
+          cmake -B build \
+            -G Ninja \
+            -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
+            -DBUILD_TESTS=ON \
+            -DBUILD_STUBS=ON \
+            -DBUILD_IOS=ON
+      
+      - name: Build
+        run: cmake --build build --config ${{ env.BUILD_TYPE }}
+      
+      - name: Run tests
+        run: |
+          cd build
+          ctest --output-on-failure --verbose
+      
+      - name: Generate test report
+        if: always()
+        run: |
+          cd build
+          ctest --output-junit test-results.xml || true
+      
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-macos
+          path: cpp-core/build/test-results.xml
+          retention-days: 30
+  
+  test-android:
+    name: Test Android Build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cpp-core
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Android NDK
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r26b
+          add-to-path: true
+      
+      - name: Configure CMake for Android
+        run: |
+          cmake -B build-android \
+            -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake \
+            -DANDROID_ABI=arm64-v8a \
+            -DANDROID_PLATFORM=android-24 \
+            -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
+            -DBUILD_TESTS=OFF \
+            -DBUILD_ANDROID=ON
+      
+      - name: Build for Android
+        run: cmake --build build-android --config ${{ env.BUILD_TYPE }}
+      
+      - name: Upload Android library
+        uses: actions/upload-artifact@v4
+        with:
+          name: libmobile_scan_android
+          path: cpp-core/build-android/*.so
+          retention-days: 30
+  
+  coverage:
+    name: Code Coverage
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cpp-core
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build clang-15 llvm-15 lcov
+      
+      - name: Configure CMake with coverage
+        run: |
+          cmake -B build \
+            -G Ninja \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_CXX_COMPILER=clang++-15 \
+            -DCMAKE_CXX_FLAGS="--coverage -fprofile-instr-generate -fcoverage-mapping" \
+            -DBUILD_TESTS=ON \
+            -DBUILD_STUBS=ON
+      
+      - name: Build
+        run: cmake --build build
+      
+      - name: Run tests
+        run: |
+          cd build
+          LLVM_PROFILE_FILE="coverage-%p.profraw" ctest --output-on-failure
+      
+      - name: Generate coverage report
+        run: |
+          cd build
+          llvm-profdata-15 merge -sparse coverage-*.profraw -o coverage.profdata
+          llvm-cov-15 show mobile_scan_tests -instr-profile=coverage.profdata > coverage.txt
+          llvm-cov-15 report mobile_scan_tests -instr-profile=coverage.profdata
+      
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: cpp-core/build/coverage.txt
+          retention-days: 30
+      
+      - name: Comment coverage on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const coverage = fs.readFileSync('cpp-core/build/coverage.txt', 'utf8');
+            const lines = coverage.split('\n').slice(0, 20).join('\n');
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## C++ Code Coverage\n\`\`\`\n${lines}\n\`\`\``
+            });
+
+  notify:
+    name: Notify Test Status
+    runs-on: ubuntu-latest
+    needs: [test-linux, test-macos, test-android, coverage]
+    if: always()
+    
+    steps:
+      - name: Send notification
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+        run: |
+          LINUX_STATUS="${{ needs.test-linux.result == 'success' && '✅' || '❌' }}"
+          MACOS_STATUS="${{ needs.test-macos.result == 'success' && '✅' || '❌' }}"
+          ANDROID_STATUS="${{ needs.test-android.result == 'success' && '✅' || '❌' }}"
+          COVERAGE_STATUS="${{ needs.coverage.result == 'success' && '✅' || '❌' }}"
+          
+          MESSAGE="C++ Tests Status\nLinux: $LINUX_STATUS\nmacOS: $MACOS_STATUS\nAndroid: $ANDROID_STATUS\nCoverage: $COVERAGE_STATUS\nCommit: ${{ github.sha }}\nBranch: ${{ github.ref_name }}\nAuthor: ${{ github.actor }}"
+          
+          # Slack notification
+          if [ -n "$SLACK_WEBHOOK" ]; then
+            curl -X POST "$SLACK_WEBHOOK" \
+              -H 'Content-Type: application/json' \
+              -d "{\"text\":\"$MESSAGE\"}"
+          fi
+          
+          # Discord notification
+          if [ -n "$DISCORD_WEBHOOK" ]; then
+            curl -X POST "$DISCORD_WEBHOOK" \
+              -H 'Content-Type: application/json' \
+              -d "{\"content\":\"$MESSAGE\"}"
+          fi

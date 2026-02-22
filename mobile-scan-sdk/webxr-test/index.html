@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebXR 兼容性检测工具</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            color: #333;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #5a67d8 0%, #6b46c1 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            opacity: 0.9;
+            font-size: 14px;
+        }
+
+        .content {
+            padding: 30px;
+        }
+
+        .section {
+            margin-bottom: 30px;
+        }
+
+        .section-title {
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 15px;
+            color: #5a67d8;
+            display: flex;
+            align-items: center;
+        }
+
+        .section-title::before {
+            content: '';
+            width: 4px;
+            height: 20px;
+            background: #5a67d8;
+            margin-right: 10px;
+            border-radius: 2px;
+        }
+
+        .feature-item {
+            background: #f7fafc;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-left: 4px solid #e2e8f0;
+        }
+
+        .feature-name {
+            font-weight: 500;
+            color: #2d3748;
+        }
+
+        .feature-status {
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .status-supported {
+            background: #c6f6d5;
+            color: #22543d;
+        }
+
+        .status-not-supported {
+            background: #fed7d7;
+            color: #742a2a;
+        }
+
+        .status-checking {
+            background: #feebc8;
+            color: #7c2d12;
+        }
+
+        .device-info {
+            background: #edf2f7;
+            padding: 20px;
+            border-radius: 8px;
+            margin-top: 15px;
+        }
+
+        .info-row {
+            display: flex;
+            padding: 8px 0;
+            border-bottom: 1px solid #cbd5e0;
+        }
+
+        .info-row:last-child {
+            border-bottom: none;
+        }
+
+        .info-label {
+            font-weight: 600;
+            width: 150px;
+            color: #4a5568;
+        }
+
+        .info-value {
+            color: #2d3748;
+            flex: 1;
+        }
+
+        .test-button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            width: 100%;
+            transition: transform 0.2s, box-shadow 0.2s;
+            margin-top: 20px;
+        }
+
+        .test-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+        }
+
+        .test-button:active {
+            transform: translateY(0);
+        }
+
+        .test-button:disabled {
+            background: #cbd5e0;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .recommendation {
+            background: #bee3f8;
+            border-left: 4px solid #3182ce;
+            padding: 15px;
+            border-radius: 4px;
+            margin-top: 15px;
+        }
+
+        .recommendation-title {
+            font-weight: 600;
+            color: #2c5282;
+            margin-bottom: 8px;
+        }
+
+        .recommendation-text {
+            color: #2d3748;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        .fallback-info {
+            background: #fefcbf;
+            border-left: 4px solid #d69e2e;
+            padding: 15px;
+            border-radius: 4px;
+            margin-top: 15px;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border: 2px solid #f3f4f6;
+            border-top-color: #7c2d12;
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .footer {
+            background: #f7fafc;
+            padding: 20px;
+            text-align: center;
+            color: #718096;
+            font-size: 13px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>WebXR 兼容性检测工具</h1>
+            <p>检测当前设备对 WebXR 和相关 API 的支持情况</p>
+        </div>
+
+        <div class="content">
+            <!-- WebXR Support Section -->
+            <div class="section">
+                <div class="section-title">WebXR API 支持情况</div>
+                
+                <div class="feature-item">
+                    <div class="feature-name">WebXR Device API</div>
+                    <div class="feature-status status-checking" id="webxr-status">
+                        <span class="loading"></span> 检测中
+                    </div>
+                </div>
+
+                <div class="feature-item">
+                    <div class="feature-name">WebXR AR 模式</div>
+                    <div class="feature-status status-checking" id="ar-status">
+                        <span class="loading"></span> 检测中
+                    </div>
+                </div>
+
+                <div class="feature-item">
+                    <div class="feature-name">WebXR VR 模式</div>
+                    <div class="feature-status status-checking" id="vr-status">
+                        <span class="loading"></span> 检测中
+                    </div>
+                </div>
+            </div>
+
+            <!-- Fallback API Section -->
+            <div class="section">
+                <div class="section-title">降级方案 API 支持</div>
+                
+                <div class="feature-item">
+                    <div class="feature-name">DeviceOrientation API</div>
+                    <div class="feature-status status-checking" id="orientation-status">
+                        <span class="loading"></span> 检测中
+                    </div>
+                </div>
+
+                <div class="feature-item">
+                    <div class="feature-name">DeviceMotion API</div>
+                    <div class="feature-status status-checking" id="motion-status">
+                        <span class="loading"></span> 检测中
+                    </div>
+                </div>
+
+                <div class="feature-item">
+                    <div class="feature-name">陀螺仪权限</div>
+                    <div class="feature-status status-checking" id="gyro-permission-status">
+                        <span class="loading"></span> 检测中
+                    </div>
+                </div>
+            </div>
+
+            <!-- Device Info Section -->
+            <div class="section">
+                <div class="section-title">设备信息</div>
+                <div class="device-info">
+                    <div class="info-row">
+                        <div class="info-label">浏览器</div>
+                        <div class="info-value" id="browser-info">检测中...</div>
+                    </div>
+                    <div class="info-row">
+                        <div class="info-label">操作系统</div>
+                        <div class="info-value" id="os-info">检测中...</div>
+                    </div>
+                    <div class="info-row">
+                        <div class="info-label">User Agent</div>
+                        <div class="info-value" id="ua-info" style="word-break: break-all; font-size: 12px;">检测中...</div>
+                    </div>
+                    <div class="info-row">
+                        <div class="info-label">屏幕分辨率</div>
+                        <div class="info-value" id="screen-info">检测中...</div>
+                    </div>
+                    <div class="info-row">
+                        <div class="info-label">像素比</div>
+                        <div class="info-value" id="pixel-ratio">检测中...</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Test Button -->
+            <button class="test-button" id="permission-test" style="display: none;">
+                请求陀螺仪权限 (iOS)
+            </button>
+
+            <!-- Recommendation Section -->
+            <div id="recommendation-container"></div>
+        </div>
+
+        <div class="footer">
+            XR Collaboration Platform - WebXR Compatibility Checker v1.0
+        </div>
+    </div>
+
+    <script>
+        // Utility: Detect Browser
+        function detectBrowser() {
+            const ua = navigator.userAgent;
+            if (ua.includes('Quest')) return 'Meta Quest Browser';
+            if (ua.includes('Edg')) return 'Microsoft Edge';
+            if (ua.includes('Chrome') && !ua.includes('Edg')) return 'Google Chrome';
+            if (ua.includes('Safari') && !ua.includes('Chrome')) return 'Safari';
+            if (ua.includes('Firefox')) return 'Firefox';
+            return 'Unknown';
+        }
+
+        // Utility: Detect OS
+        function detectOS() {
+            const ua = navigator.userAgent;
+            if (ua.includes('Android')) return 'Android';
+            if (ua.includes('iPhone') || ua.includes('iPad')) return 'iOS';
+            if (ua.includes('Windows')) return 'Windows';
+            if (ua.includes('Mac')) return 'macOS';
+            if (ua.includes('Linux')) return 'Linux';
+            return 'Unknown';
+        }
+
+        // Update status element
+        function updateStatus(elementId, supported, text = null) {
+            const element = document.getElementById(elementId);
+            if (supported) {
+                element.className = 'feature-status status-supported';
+                element.textContent = text || '✓ 支持';
+            } else {
+                element.className = 'feature-status status-not-supported';
+                element.textContent = text || '✗ 不支持';
+            }
+        }
+
+        // Display device info
+        function displayDeviceInfo() {
+            document.getElementById('browser-info').textContent = detectBrowser();
+            document.getElementById('os-info').textContent = detectOS();
+            document.getElementById('ua-info').textContent = navigator.userAgent;
+            document.getElementById('screen-info').textContent = 
+                `${screen.width} × ${screen.height}`;
+            document.getElementById('pixel-ratio').textContent = 
+                window.devicePixelRatio.toFixed(2);
+        }
+
+        // Check WebXR support
+        async function checkWebXRSupport() {
+            if ('xr' in navigator) {
+                updateStatus('webxr-status', true);
+                
+                // Check AR support
+                try {
+                    const arSupported = await navigator.xr.isSessionSupported('immersive-ar');
+                    updateStatus('ar-status', arSupported);
+                } catch (e) {
+                    updateStatus('ar-status', false);
+                }
+
+                // Check VR support
+                try {
+                    const vrSupported = await navigator.xr.isSessionSupported('immersive-vr');
+                    updateStatus('vr-status', vrSupported);
+                } catch (e) {
+                    updateStatus('vr-status', false);
+                }
+            } else {
+                updateStatus('webxr-status', false);
+                updateStatus('ar-status', false);
+                updateStatus('vr-status', false);
+            }
+        }
+
+        // Check DeviceOrientation support
+        function checkOrientationSupport() {
+            const hasOrientation = 'DeviceOrientationEvent' in window;
+            updateStatus('orientation-status', hasOrientation);
+
+            const hasMotion = 'DeviceMotionEvent' in window;
+            updateStatus('motion-status', hasMotion);
+
+            // Check if permission request is needed (iOS 13+)
+            const needsPermission = typeof DeviceOrientationEvent !== 'undefined' && 
+                                   typeof DeviceOrientationEvent.requestPermission === 'function';
+            
+            if (needsPermission) {
+                updateStatus('gyro-permission-status', false, '需要请求');
+                document.getElementById('permission-test').style.display = 'block';
+            } else if (hasOrientation) {
+                updateStatus('gyro-permission-status', true, '无需权限');
+            } else {
+                updateStatus('gyro-permission-status', false);
+            }
+        }
+
+        // Request iOS permission
+        async function requestPermission() {
+            const button = document.getElementById('permission-test');
+            button.disabled = true;
+            button.textContent = '请求中...';
+
+            try {
+                if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+                    const response = await DeviceOrientationEvent.requestPermission();
+                    if (response === 'granted') {
+                        updateStatus('gyro-permission-status', true, '✓ 已授权');
+                        button.textContent = '权限已授予';
+                        setTimeout(() => {
+                            button.style.display = 'none';
+                        }, 2000);
+                    } else {
+                        updateStatus('gyro-permission-status', false, '✗ 已拒绝');
+                        button.textContent = '权限被拒绝';
+                        button.disabled = false;
+                    }
+                }
+            } catch (error) {
+                console.error('Permission request failed:', error);
+                updateStatus('gyro-permission-status', false, '✗ 请求失败');
+                button.textContent = '请求失败，重试';
+                button.disabled = false;
+            }
+        }
+
+        // Generate recommendation
+        function generateRecommendation() {
+            const container = document.getElementById('recommendation-container');
+            const hasWebXR = 'xr' in navigator;
+            const hasOrientation = 'DeviceOrientationEvent' in window;
+            const browser = detectBrowser();
+            const os = detectOS();
+
+            let recommendationHTML = '';
+
+            if (hasWebXR) {
+                recommendationHTML = `
+                    <div class="recommendation">
+                        <div class="recommendation-title">✓ 推荐使用 WebXR</div>
+                        <div class="recommendation-text">
+                            您的设备支持 WebXR API，可以获得最佳的沉浸式体验。
+                            建议使用 WebXR 作为主要实现方案。
+                        </div>
+                    </div>
+                `;
+            } else if (hasOrientation) {
+                recommendationHTML = `
+                    <div class="fallback-info">
+                        <div class="recommendation-title">⚠ 建议使用降级方案</div>
+                        <div class="recommendation-text">
+                            您的设备不支持 WebXR，但支持 DeviceOrientation API。
+                            系统将自动使用降级方案，提供基础的陀螺仪追踪功能。
+                            ${os === 'iOS' ? '<br><strong>iOS 用户需要授予陀螺仪权限。</strong>' : ''}
+                        </div>
+                    </div>
+                `;
+            } else {
+                recommendationHTML = `
+                    <div class="recommendation" style="background: #fed7d7; border-left-color: #c53030;">
+                        <div class="recommendation-title" style="color: #742a2a;">✗ 设备不兼容</div>
+                        <div class="recommendation-text" style="color: #742a2a;">
+                            您的设备既不支持 WebXR 也不支持 DeviceOrientation API。
+                            无法提供空间追踪功能，建议更换设备或浏览器。
+                        </div>
+                    </div>
+                `;
+            }
+
+            // Add browser-specific tips
+            if (os === 'iOS' && browser === 'Safari') {
+                recommendationHTML += `
+                    <div class="recommendation" style="margin-top: 10px;">
+                        <div class="recommendation-title">💡 Safari iOS 提示</div>
+                        <div class="recommendation-text">
+                            • WebXR 需要 iOS 15.2+<br>
+                            • 部分功能可能受限<br>
+                            • DeviceOrientation 需要用户授权<br>
+                            • 建议在独立浏览器标签页中打开（非内嵌视图）
+                        </div>
+                    </div>
+                `;
+            } else if (os === 'Android' && (browser === 'Google Chrome' || browser === 'Microsoft Edge')) {
+                recommendationHTML += `
+                    <div class="recommendation" style="margin-top: 10px;">
+                        <div class="recommendation-title">💡 Android Chrome 提示</div>
+                        <div class="recommendation-text">
+                            • WebXR 支持良好<br>
+                            • 建议使用最新版本浏览器<br>
+                            • AR 功能需要 ARCore 支持
+                        </div>
+                    </div>
+                `;
+            }
+
+            container.innerHTML = recommendationHTML;
+        }
+
+        // Initialize checks
+        async function initialize() {
+            displayDeviceInfo();
+            checkOrientationSupport();
+            await checkWebXRSupport();
+            generateRecommendation();
+        }
+
+        // Event listeners
+        document.getElementById('permission-test').addEventListener('click', requestPermission);
+
+        // Run checks when page loads
+        window.addEventListener('load', initialize);
+    </script>
+</body>
+</html>

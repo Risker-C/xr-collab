@@ -1,0 +1,276 @@
+name: Code Quality & Linting
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  flutter-lint:
+    name: Flutter Lint & Format
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: flutter-ui
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.16.0'
+          channel: 'stable'
+          cache: true
+      
+      - name: Get dependencies
+        run: flutter pub get
+      
+      - name: Verify formatting
+        run: |
+          dart format --output=none --set-exit-if-changed lib/ test/
+      
+      - name: Analyze code
+        run: flutter analyze --no-fatal-infos
+      
+      - name: Run custom lint rules
+        run: |
+          flutter pub run custom_lint || true
+      
+      - name: Check for outdated dependencies
+        run: flutter pub outdated || true
+      
+      - name: Generate lint report
+        if: always()
+        run: |
+          flutter analyze --write=flutter-analysis.txt || true
+      
+      - name: Upload Flutter lint report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: flutter-lint-report
+          path: flutter-ui/flutter-analysis.txt
+          retention-days: 30
+
+  cpp-lint:
+    name: C++ Lint & Format
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cpp-core
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Install clang tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-format-15 clang-tidy-15
+      
+      - name: Check C++ formatting
+        run: |
+          find include stubs platform tests -name "*.h" -o -name "*.cpp" -o -name "*.mm" | \
+          xargs clang-format-15 --dry-run -Werror --style=file:.clang-format || true
+      
+      - name: Run clang-tidy
+        run: |
+          # Generate compile_commands.json
+          cmake -B build \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+            -DBUILD_TESTS=ON
+          
+          # Run clang-tidy on source files
+          find stubs tests -name "*.cpp" | \
+          xargs clang-tidy-15 -p build --warnings-as-errors='' || true
+      
+      - name: Generate C++ lint report
+        if: always()
+        run: |
+          find include stubs platform tests -name "*.h" -o -name "*.cpp" -o -name "*.mm" | \
+          xargs clang-format-15 --dry-run --Werror --style=file:.clang-format > cpp-format-report.txt 2>&1 || true
+      
+      - name: Upload C++ lint report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cpp-lint-report
+          path: cpp-core/cpp-format-report.txt
+          retention-days: 30
+  
+  yaml-lint:
+    name: YAML Lint
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Install yamllint
+        run: pip install yamllint
+      
+      - name: Lint YAML files
+        run: |
+          yamllint .github/workflows/*.yml || true
+          yamllint flutter-ui/pubspec.yaml || true
+          yamllint api-design/*.yaml || true
+
+  markdown-lint:
+    name: Markdown Lint
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Lint Markdown files
+        uses: DavidAnson/markdownlint-cli2-action@v15
+        with:
+          globs: '**/*.md'
+          config: '.markdownlint.json'
+        continue-on-error: true
+
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+      
+      - name: Upload Trivy results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+      
+      - name: Check for secrets
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: ${{ github.event.repository.default_branch }}
+          head: HEAD
+          extra_args: --only-verified
+
+  dependency-check:
+    name: Dependency Security Check
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.16.0'
+          channel: 'stable'
+      
+      - name: Get Flutter dependencies
+        working-directory: flutter-ui
+        run: flutter pub get
+      
+      - name: Check Flutter dependencies for vulnerabilities
+        working-directory: flutter-ui
+        run: |
+          flutter pub deps --json > deps.json
+          # You can integrate with tools like snyk here
+          echo "Dependency check completed"
+      
+      - name: Upload dependency tree
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-tree
+          path: flutter-ui/deps.json
+          retention-days: 30
+
+  quality-gate:
+    name: Quality Gate
+    runs-on: ubuntu-latest
+    needs: [flutter-lint, cpp-lint, yaml-lint, markdown-lint, security-scan, dependency-check]
+    if: always()
+    
+    steps:
+      - name: Check quality gate
+        run: |
+          FLUTTER_LINT="${{ needs.flutter-lint.result }}"
+          CPP_LINT="${{ needs.cpp-lint.result }}"
+          YAML_LINT="${{ needs.yaml-lint.result }}"
+          MARKDOWN_LINT="${{ needs.markdown-lint.result }}"
+          SECURITY="${{ needs.security-scan.result }}"
+          DEPS="${{ needs.dependency-check.result }}"
+          
+          echo "Flutter Lint: $FLUTTER_LINT"
+          echo "C++ Lint: $CPP_LINT"
+          echo "YAML Lint: $YAML_LINT"
+          echo "Markdown Lint: $MARKDOWN_LINT"
+          echo "Security Scan: $SECURITY"
+          echo "Dependency Check: $DEPS"
+          
+          # Fail if critical checks fail
+          if [ "$FLUTTER_LINT" != "success" ] || [ "$CPP_LINT" != "success" ] || [ "$SECURITY" != "success" ]; then
+            echo "❌ Quality gate FAILED"
+            exit 1
+          else
+            echo "✅ Quality gate PASSED"
+          fi
+      
+      - name: Send notification
+        if: always()
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+        run: |
+          STATUS="${{ needs.flutter-lint.result == 'success' && needs.cpp-lint.result == 'success' && needs.security-scan.result == 'success' && '✅ PASSED' || '❌ FAILED' }}"
+          MESSAGE="Code Quality Gate $STATUS\nFlutter: ${{ needs.flutter-lint.result }}\nC++: ${{ needs.cpp-lint.result }}\nSecurity: ${{ needs.security-scan.result }}\nCommit: ${{ github.sha }}\nBranch: ${{ github.ref_name }}\nAuthor: ${{ github.actor }}"
+          
+          # Slack notification
+          if [ -n "$SLACK_WEBHOOK" ]; then
+            curl -X POST "$SLACK_WEBHOOK" \
+              -H 'Content-Type: application/json' \
+              -d "{\"text\":\"$MESSAGE\"}"
+          fi
+          
+          # Discord notification
+          if [ -n "$DISCORD_WEBHOOK" ]; then
+            curl -X POST "$DISCORD_WEBHOOK" \
+              -H 'Content-Type: application/json' \
+              -d "{\"content\":\"$MESSAGE\"}"
+          fi
+      
+      - name: Comment on PR
+        if: github.event_name == 'pull_request' && always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const status = '${{ needs.flutter-lint.result == "success" && needs.cpp-lint.result == "success" && needs.security-scan.result == "success" ? "✅ PASSED" : "❌ FAILED" }}';
+            const body = `## Code Quality Report ${status}
+            
+            | Check | Status |
+            |-------|--------|
+            | Flutter Lint | ${{ needs.flutter-lint.result == 'success' ? '✅' : '❌' }} |
+            | C++ Lint | ${{ needs.cpp-lint.result == 'success' ? '✅' : '❌' }} |
+            | YAML Lint | ${{ needs.yaml-lint.result == 'success' ? '✅' : '❌' }} |
+            | Markdown Lint | ${{ needs.markdown-lint.result == 'success' ? '✅' : '❌' }} |
+            | Security Scan | ${{ needs.security-scan.result == 'success' ? '✅' : '❌' }} |
+            | Dependency Check | ${{ needs.dependency-check.result == 'success' ? '✅' : '❌' }} |
+            `;
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });

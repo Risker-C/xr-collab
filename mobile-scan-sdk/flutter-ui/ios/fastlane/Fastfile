@@ -1,0 +1,92 @@
+# Fastlane configuration for iOS deployment
+
+default_platform(:ios)
+
+platform :ios do
+  desc "Push a new build to TestFlight"
+  lane :deploy_testflight do
+    # Set up App Store Connect API key
+    api_key = app_store_connect_api_key(
+      key_id: ENV["APP_STORE_CONNECT_API_KEY_ID"],
+      issuer_id: ENV["APP_STORE_CONNECT_API_ISSUER_ID"],
+      key_content: ENV["APP_STORE_CONNECT_API_KEY_CONTENT"],
+      is_key_content_base64: false,
+      duration: 1200,
+      in_house: false
+    )
+    
+    # Get the latest build number from TestFlight
+    latest_build_number = latest_testflight_build_number(
+      api_key: api_key,
+      initial_build_number: 0
+    )
+    
+    # Increment build number
+    increment_build_number(
+      build_number: latest_build_number + 1,
+      xcodeproj: "Runner.xcodeproj"
+    )
+    
+    # Build the app
+    build_app(
+      workspace: "Runner.xcworkspace",
+      scheme: "Runner",
+      export_method: "app-store",
+      export_options: {
+        provisioningProfiles: {
+          ENV["BUNDLE_IDENTIFIER"] => ENV["PROVISIONING_PROFILE_SPECIFIER"]
+        }
+      }
+    )
+    
+    # Upload to TestFlight
+    upload_to_testflight(
+      api_key: api_key,
+      skip_waiting_for_build_processing: true,
+      skip_submission: true,
+      distribute_external: false,
+      notify_external_testers: false,
+      changelog: "Automated build from CI/CD pipeline"
+    )
+    
+    # Post to Slack
+    if ENV["SLACK_WEBHOOK"]
+      slack(
+        message: "Successfully uploaded new build to TestFlight! 🚀",
+        slack_url: ENV["SLACK_WEBHOOK"],
+        success: true
+      )
+    end
+  end
+  
+  desc "Build without uploading"
+  lane :build_only do
+    build_app(
+      workspace: "Runner.xcworkspace",
+      scheme: "Runner",
+      export_method: "development",
+      skip_codesigning: true
+    )
+  end
+  
+  desc "Run tests"
+  lane :test do
+    run_tests(
+      workspace: "Runner.xcworkspace",
+      scheme: "Runner",
+      devices: ["iPhone 15 Pro"],
+      clean: true
+    )
+  end
+  
+  # Error handling
+  error do |lane, exception, options|
+    if ENV["SLACK_WEBHOOK"]
+      slack(
+        message: "iOS build failed: #{exception.message}",
+        slack_url: ENV["SLACK_WEBHOOK"],
+        success: false
+      )
+    end
+  end
+end
