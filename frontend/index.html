@@ -2,326 +2,203 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WebXR 实时协作平台</title>
-    <link rel="stylesheet" href="style.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>XR Collab - 实时协作平台</title>
+    <link rel="stylesheet" href="style-v2.css">
     <link rel="stylesheet" href="scanning.css">
-    <script src="lib/fullscreen.js"></script>
-    <script src="lib/interactive-feedback.js"></script>
-    <script src="lib/file-upload.js"></script>
 </head>
 <body>
+    <!-- Canvas Container -->
     <div id="canvas-container"></div>
     
+    <!-- Top Navigation Bar -->
+    <nav id="top-nav">
+        <div class="nav-left">
+            <div class="logo">🎮 XR Collab</div>
+            <div id="room-badge" style="display: none;">
+                <span id="room-name"></span>
+                <button id="copy-invite" class="icon-btn" title="复制邀请">📋</button>
+            </div>
+        </div>
+        
+        <div class="nav-center">
+            <div id="connection-status" class="status-badge disconnected">
+                <span class="status-dot"></span>
+                <span id="status-text">未连接</span>
+            </div>
+        </div>
+        
+        <div class="nav-right">
+            <button id="perf-toggle" class="icon-btn" title="性能监控">📊</button>
+            <button id="users-toggle" class="icon-btn" title="在线用户">👥</button>
+            <button id="help-toggle" class="icon-btn" title="帮助">?</button>
+            <button id="fullscreen-toggle" class="icon-btn" title="全屏">⛶</button>
+        </div>
+    </nav>
+
+    <!-- Left Primary Sidebar -->
+    <aside id="primary-sidebar" class="sidebar">
+        <div class="sidebar-header">
+            <h3>🎨 工具面板</h3>
+            <button id="sidebar-collapse" class="icon-btn">◀</button>
+        </div>
+        
+        <div class="sidebar-content">
+            <!-- Scan Button - Prominent Position -->
+            <button id="scan-btn" class="primary-btn scan-btn">
+                🏢 空间扫描
+            </button>
+            
+            <!-- Create Section -->
+            <div class="tool-section">
+                <h4>📦 创建形状</h4>
+                <div class="btn-grid">
+                    <button onclick="createCube()" class="tool-btn">🟦 方块</button>
+                    <button onclick="createSphere()" class="tool-btn">🔵 球体</button>
+                    <button onclick="createCylinder()" class="tool-btn">🔶 圆柱</button>
+                    <button onclick="createTorus()" class="tool-btn">🍩 圆环</button>
+                </div>
+            </div>
+            
+            <!-- Whiteboard Tools -->
+            <div class="tool-section">
+                <h4>🖍️ 白板工具</h4>
+                <div class="btn-grid">
+                    <button class="tool-btn active" onclick="whiteboardSystem.setTool('brush')">🖌️ 画笔</button>
+                    <button class="tool-btn" onclick="whiteboardSystem.setTool('text')">🔤 文本</button>
+                    <button class="tool-btn" onclick="whiteboardSystem.setTool('eraser')">🧽 橡皮</button>
+                    <button onclick="createWhiteboardNearCamera()" class="tool-btn">➕ 创建</button>
+                </div>
+            </div>
+            
+            <!-- Color & Material -->
+            <div class="tool-section">
+                <h4>🎨 颜色/材质</h4>
+                <input type="color" id="colorPicker" value="#4CAF50">
+                <select id="materialPreset">
+                    <option value="standard">标准</option>
+                    <option value="metal">金属</option>
+                    <option value="matte">哑光</option>
+                </select>
+            </div>
+            
+            <!-- File Upload -->
+            <div class="tool-section">
+                <h4>📎 文件上传</h4>
+                <input type="file" id="file-input" style="display:none" accept="image/*,application/pdf">
+                <button onclick="document.getElementById('file-input').click()" class="tool-btn">📁 选择文件</button>
+                <div id="upload-status"></div>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Right Utility Drawer -->
+    <aside id="utility-drawer" class="drawer collapsed">
+        <button id="drawer-toggle" class="drawer-toggle">
+            <span>◀</span>
+        </button>
+        
+        <div class="drawer-content">
+            <div class="drawer-section">
+                <h4>🕘 操作历史</h4>
+                <div id="history-controls">
+                    <button onclick="requestUndo()">↩️ 撤销</button>
+                    <button onclick="requestRedo()">↪️ 重做</button>
+                </div>
+                <ul id="operation-history-list"></ul>
+            </div>
+            
+            <div class="drawer-section">
+                <h4>👥 在线用户</h4>
+                <ul id="users-list"></ul>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Mobile Bottom Nav -->
+    <nav id="bottom-nav" class="mobile-only">
+        <button class="bottom-nav-btn" onclick="toggleSidebar()">
+            <span>🎨</span>
+            <span>工具</span>
+        </button>
+        <button class="bottom-nav-btn" id="mobile-scan-btn">
+            <span>🏢</span>
+            <span>扫描</span>
+        </button>
+        <button class="bottom-nav-btn" onclick="createWhiteboardNearCamera()">
+            <span>📝</span>
+            <span>白板</span>
+        </button>
+        <button class="bottom-nav-btn" onclick="toggleChat()">
+            <span>💬</span>
+            <span>聊天</span>
+        </button>
+    </nav>
+
+    <!-- Join Panel (Modal) -->
+    <div id="join-panel" class="modal-overlay">
+        <div class="modal-content">
+            <h2>🎮 加入房间</h2>
+            
+            <label>昵称</label>
+            <input type="text" id="username" placeholder="输入你的名字" value="用户">
+            
+            <div class="section">
+                <h3>创建房间</h3>
+                <input type="text" id="createRoomName" placeholder="房间名称">
+                <label><input type="checkbox" id="createRoomPublic" checked> 公开房间</label>
+                <input type="password" id="createRoomPassword" placeholder="密码（可选）">
+                <button onclick="createRoom()" class="primary-btn">创建并进入</button>
+            </div>
+            
+            <div class="section">
+                <h3>加入房间</h3>
+                <input type="text" id="roomId" placeholder="房间ID">
+                <input type="password" id="joinRoomPassword" placeholder="密码（如有）">
+                <button onclick="joinRoom()" class="primary-btn">加入</button>
+            </div>
+            
+            <div class="section">
+                <h3>公开房间</h3>
+                <button onclick="refreshRoomList()" class="secondary-btn">刷新列表</button>
+                <ul id="public-room-list"></ul>
+            </div>
+            
+            <div id="join-error"></div>
+        </div>
+    </div>
+
     <!-- Chat Panel -->
-    <div id="chat-panel">
-        <div id="chat-header">
-            <span>💬 Chat</span>
-            <button id="chat-toggle">✕</button>
+    <div id="chat-panel" class="panel">
+        <div class="panel-header">
+            <span>💬 聊天</span>
+            <button id="chat-close">✕</button>
         </div>
         <div id="chat-messages"></div>
-        <div id="chat-emoji-bar">
-            <button class="emoji-btn" data-emoji="😀">😀</button>
-            <button class="emoji-btn" data-emoji="👍">👍</button>
-            <button class="emoji-btn" data-emoji="🎉">🎉</button>
-            <button class="emoji-btn" data-emoji="❤️">❤️</button>
-            <button class="emoji-btn" data-emoji="😂">😂</button>
-            <button class="emoji-btn" data-emoji="🔥">🔥</button>
-        </div>
-        <div id="chat-input-row">
-            <input id="chat-input" type="text" placeholder="Message..." maxlength="200" autocomplete="off">
-            <button id="chat-send">Send</button>
+        <div class="chat-input-row">
+            <input id="chat-input" type="text" placeholder="输入消息..." maxlength="200">
+            <button id="chat-send">发送</button>
         </div>
     </div>
-    <button id="chat-open-btn">💬</button>
-    
-    <div id="ui-overlay">
-        <div id="join-panel">
-            <h2>🎮 房间管理</h2>
 
-            <label class="room-label" for="username">昵称</label>
-            <input type="text" id="username" placeholder="输入你的名字" value="用户">
-
-            <div class="room-section">
-                <h3>创建房间</h3>
-                <input type="text" id="createRoomName" placeholder="房间名称（如：产品评审）">
-                <div class="room-inline">
-                    <label><input type="checkbox" id="createRoomPublic" checked> 公开房间</label>
-                </div>
-                <input type="password" id="createRoomPassword" placeholder="房间密码（可选）">
-                <button onclick="createRoom()">创建并进入</button>
-            </div>
-
-            <div class="room-section">
-                <h3>加入房间</h3>
-                <input type="text" id="roomId" placeholder="输入房间ID（如：A1B2C3）">
-                <input type="password" id="joinRoomPassword" placeholder="房间密码（如有）">
-                <button onclick="joinRoom()">通过ID加入</button>
-            </div>
-
-            <div class="room-section">
-                <div class="room-list-header">
-                    <h3>公开房间列表</h3>
-                    <button class="secondary-btn" onclick="refreshRoomList()">刷新</button>
-                </div>
-                <ul id="public-room-list" class="public-room-list"></ul>
-            </div>
-
-            <div id="join-error" class="join-error"></div>
+    <!-- Help Panel -->
+    <div id="help-panel" class="panel" style="display: none;">
+        <div class="panel-header">
+            <span>💡 操作提示</span>
+            <button onclick="toggleHelp()">✕</button>
         </div>
-        
-        <div id="controls">
-            <h3>🎨 控制面板</h3>
-            
-            <h4>📦 创建形状</h4>
-            <button onclick="createCube()">🟦 方块 (1)</button>
-            <button onclick="createSphere()">🔵 球体 (2)</button>
-            <button onclick="createCylinder()">🔶 圆柱 (3)</button>
-            <button onclick="createTorus()">🍩 圆环 (4)</button>
-            <button onclick="createPyramid()">🔺 金字塔 (5)</button>
-            
-            <hr>
-            
-            <h4>🖍️ 白板工具</h4>
-            <div class="whiteboard-role-row">
-                <span>当前权限：</span>
-                <span id="whiteboard-role" class="role-member">成员</span>
-            </div>
-            <div id="whiteboard-lock-notice" class="whiteboard-notice"></div>
-
-            <div class="whiteboard-toolbar">
-                <button class="tool-btn active" data-tool="brush" onclick="whiteboardSystem.setTool('brush')">🖌️ 画笔 (B)</button>
-                <button class="tool-btn" data-tool="text" onclick="whiteboardSystem.setTool('text')">🔤 文本 (T)</button>
-                <button class="tool-btn" data-tool="arrow" onclick="whiteboardSystem.setTool('arrow')">↗️ 箭头</button>
-                <button class="tool-btn" data-tool="laser" onclick="whiteboardSystem.setTool('laser')">🔦 激光笔</button>
-                <button class="tool-btn" data-tool="eraser" onclick="whiteboardSystem.setTool('eraser')">🧽 橡皮擦 (E)</button>
-            </div>
-
-            <div class="brush-settings">
-                <label for="brushWidth">粗细</label>
-                <input type="range" id="brushWidth" min="1" max="20" value="4" onchange="whiteboardSystem.setBrushWidth(this.value)">
-
-                <label for="wbColorPicker">颜色</label>
-                <input type="color" id="wbColorPicker" value="#ff0000" onchange="whiteboardSystem.setBrushColor(this.value)">
-
-                <label for="wbFontSize">字体</label>
-                <input type="range" id="wbFontSize" min="12" max="72" value="30" onchange="setWhiteboardFontSize(this.value)">
-            </div>
-
-            <div class="whiteboard-manage-grid">
-                <button onclick="createWhiteboardNearCamera()">➕ 创建白板</button>
-                <button onclick="deleteActiveWhiteboard()">🗑️ 删除白板</button>
-                <button onclick="whiteboardSystem.clearActive()">🧹 清空白板</button>
-                <button onclick="whiteboardSystem.undo()">↩️ 白板撤销</button>
-                <button onclick="whiteboardSystem.redo()">↪️ 白板重做</button>
-            </div>
-
-            <hr>
-
-            <h4>📎 文件上传</h4>
-            <div class="file-upload-section">
-                <input type="file" id="file-input" accept="image/png,image/jpeg,application/pdf" style="display:none" onchange="handleFileSelect(event)">
-                <button onclick="document.getElementById('file-input').click()">📁 选择文件</button>
-                <div id="upload-status"></div>
-                <small>支持: PNG, JPG, PDF (≤100MB)</small>
-            </div>
-
-            <div class="whiteboard-transform-grid">
-                <button onclick="moveActiveWhiteboard(0,0,-0.2)">前移</button>
-                <button onclick="moveActiveWhiteboard(0,0,0.2)">后移</button>
-                <button onclick="moveActiveWhiteboard(-0.2,0,0)">左移</button>
-                <button onclick="moveActiveWhiteboard(0.2,0,0)">右移</button>
-                <button onclick="moveActiveWhiteboard(0,0.1,0)">上移</button>
-                <button onclick="moveActiveWhiteboard(0,-0.1,0)">下移</button>
-                <button onclick="rotateActiveWhiteboard(-0.1)">左转</button>
-                <button onclick="rotateActiveWhiteboard(0.1)">右转</button>
-                <button onclick="scaleActiveWhiteboard(0.1)">放大</button>
-                <button onclick="scaleActiveWhiteboard(-0.1)">缩小</button>
-            </div>
-
-            <div class="whiteboard-list-box">
-                <div class="history-header">
-                    <h4>📋 白板列表</h4>
-                </div>
-                <ul id="whiteboard-list"></ul>
-            </div>
-
-            <div class="whiteboard-list-box">
-                <div class="history-header">
-                    <h4>🕘 白板历史</h4>
-                    <span id="whiteboard-history-count">0</span>
-                </div>
-                <ul id="whiteboard-history-list"></ul>
-            </div>
-
-            <hr>
-
-            <div class="color-picker-section">
-                <label for="colorPicker">🎨 选择颜色</label>
-                <input type="color" id="colorPicker" value="#4CAF50">
-                <button onclick="applyColorToSelected()">应用到选中物体</button>
-            </div>
-
-            <div class="material-picker-section">
-                <label for="materialPreset">🧱 材质预设</label>
-                <select id="materialPreset">
-                    <option value="standard">Standard</option>
-                    <option value="metal">Metal</option>
-                    <option value="matte">Matte</option>
-                    <option value="wireframe">Wireframe</option>
-                </select>
-                <button onclick="applyMaterialToSelected()">应用材质</button>
-            </div>
-            
-            <hr>
-
-            <h4>↩️ 撤销 / 重做</h4>
-            <button id="undo-btn" onclick="requestUndo()">撤销 (Ctrl/Cmd + Z)</button>
-            <button id="redo-btn" onclick="requestRedo()">重做 (Ctrl/Cmd + Shift + Z)</button>
-            
-            <hr>
-            
-            <h4>🗑️ 删除操作</h4>
-            <button class="delete-btn" onclick="deleteSelected()">删除选中物体 (Del)</button>
-            <button class="delete-btn" onclick="deleteAll()">清空所有物体 (Shift+Del)</button>
-            
-            <hr>
-            
-            <h4>⚙️ Worker计算</h4>
-            <button onclick="submitWorkerTask('geometry')">几何计算</button>
-            <button onclick="submitWorkerTask('collision')">碰撞检测</button>
+        <div class="help-content">
+            <h4>基本操作</h4>
+            <p><kbd>WASD</kbd> 移动 | <kbd>鼠标</kbd> 视角</p>
+            <p><kbd>1-5</kbd> 创建形状 | <kbd>Del</kbd> 删除</p>
+            <p><kbd>Ctrl+Z</kbd> 撤销 | <kbd>Ctrl+Shift+Z</kbd> 重做</p>
         </div>
-
-        <div id="operation-history-panel">
-            <div class="history-header">
-                <h4>🕘 操作历史</h4>
-                <span id="history-count">0 / 100</span>
-            </div>
-            <div id="operation-notice"></div>
-            <ul id="operation-history-list"></ul>
-        </div>
-        
-        <div id="status" class="disconnected">未连接</div>
-
-        <div id="room-info" style="display: none;">
-            <span id="room-info-text"></span>
-            <button id="copy-room-id-btn" onclick="copyRoomInvite()">复制邀请</button>
-        </div>
-        
-        <button id="fullscreen-toggle" onclick="toggleFullscreen()" title="全屏模式 (F11)">⛶</button>
-        <button id="help-toggle" onclick="toggleHelp()">?</button>
-        
-        <div id="help-panel">
-            <h3>💡 操作提示</h3>
-            
-            <div class="help-section">
-                <h4>🎮 基本操作</h4>
-                <div class="help-item">
-                    <span class="help-desc">锁定鼠标视角</span>
-                    <span class="help-key">点击画布</span>
-                </div>
-                <div class="help-item">
-                    <span class="help-desc">解锁鼠标</span>
-                    <span class="help-key">ESC</span>
-                </div>
-                <div class="help-item">
-                    <span class="help-desc">前进/后退</span>
-                    <span class="help-key">W / S</span>
-                </div>
-                <div class="help-item">
-                    <span class="help-desc">左移/右移</span>
-                    <span class="help-key">A / D</span>
-                </div>
-                <div class="help-item">
-                    <span class="help-desc">拖拽物体</span>
-                    <span class="help-key">鼠标拖拽</span>
-                </div>
-            </div>
-            
-            <div class="help-section">
-                <h4>⌨️ 快捷键</h4>
-                <div class="help-item">
-                    <span class="help-desc">创建方块</span>
-                    <span class="help-key">1</span>
-                </div>
-                <div class="help-item">
-                    <span class="help-desc">创建球体</span>
-                    <span class="help-key">2</span>
-                </div>
-                <div class="help-item">
-                    <span class="help-desc">创建圆柱</span>
-                    <span class="help-key">3</span>
-                </div>
-                <div class="help-item">
-                    <span class="help-desc">创建圆环</span>
-                    <span class="help-key">4</span>
-                </div>
-                <div class="help-item">
-                    <span class="help-desc">创建金字塔</span>
-                    <span class="help-key">5</span>
-                </div>
-                <div class="help-item">
-                    <span class="help-desc">删除选中</span>
-                    <span class="help-key">Del</span>
-                </div>
-                <div class="help-item">
-                    <span class="help-desc">清空所有</span>
-                    <span class="help-key">Shift+Del</span>
-                </div>
-                <div class="help-item">
-                    <span class="help-desc">撤销</span>
-                    <span class="help-key">Ctrl/Cmd + Z</span>
-                </div>
-                <div class="help-item">
-                    <span class="help-desc">重做</span>
-                    <span class="help-key">Ctrl/Cmd + Shift + Z</span>
-                </div>
-                <div class="help-item">
-                    <span class="help-desc">白板画笔/文本/橡皮擦</span>
-                    <span class="help-key">B / T / E</span>
-                </div>
-                <div class="help-item">
-                    <span class="help-desc">旋转选中物体</span>
-                    <span class="help-key">Q / R</span>
-                </div>
-                <div class="help-item">
-                    <span class="help-desc">缩放选中物体</span>
-                    <span class="help-key">+ / -</span>
-                </div>
-                <div class="help-item">
-                    <span class="help-desc">显示/隐藏帮助</span>
-                    <span class="help-key">H</span>
-                </div>
-            </div>
-            
-            <div class="help-section">
-                <h4>🎨 颜色选择</h4>
-                <div class="help-item">
-                    <span class="help-desc">使用颜色/材质设置修改选中物体外观</span>
-                </div>
-            </div>
-        </div>
-        
-        <div id="users-panel">
-            <h4>👥 在线用户</h4>
-            <ul id="users-list"></ul>
-        </div>
-
-        <!-- Voice Controls -->
-        <div id="voice-controls">
-            <button id="mic-toggle" class="voice-btn">🎤</button>
-            <div id="volume-indicator-container">
-                <div id="volume-indicator"></div>
-            </div>
-        </div>
-        
-        <div id="worker-result"></div>
     </div>
-    
+
+    <!-- Scripts -->
     <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/cannon@0.6.2/build/cannon.min.js"></script>
-
     <script type="importmap">
     {
         "imports": {
@@ -330,7 +207,36 @@
         }
     }
     </script>
+    <script src="lib/fullscreen.js"></script>
+    <script src="lib/interactive-feedback.js"></script>
+    <script src="lib/file-upload.js"></script>
     <script type="module" src="scanning-ui.js"></script>
     <script type="module" src="app.js"></script>
+    <script>
+        // UI Toggle Functions
+        function toggleSidebar() {
+            document.getElementById('primary-sidebar').classList.toggle('collapsed');
+        }
+        
+        function toggleChat() {
+            const panel = document.getElementById('chat-panel');
+            panel.style.display = panel.style.display === 'none' ? 'flex' : 'none';
+        }
+        
+        function toggleHelp() {
+            const panel = document.getElementById('help-panel');
+            panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+        }
+        
+        // Drawer Toggle
+        document.getElementById('drawer-toggle').addEventListener('click', () => {
+            document.getElementById('utility-drawer').classList.toggle('collapsed');
+        });
+        
+        // Sidebar Collapse
+        document.getElementById('sidebar-collapse').addEventListener('click', () => {
+            document.getElementById('primary-sidebar').classList.toggle('collapsed');
+        });
+    </script>
 </body>
 </html>

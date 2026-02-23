@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>WebXR 实时协作平台</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="scanning.css">
+    <script src="lib/fullscreen.js"></script>
+    <script src="lib/interactive-feedback.js"></script>
+    <script src="lib/file-upload.js"></script>
+</head>
+<body>
+    <div id="canvas-container"></div>
+    
+    <!-- App Root Container -->
+    <div id="app-ui">
+        <!-- 顶部导航栏 -->
+        <header id="top-bar">
+            <div class="top-bar-left">
+                <div class="logo">XR COLLAB</div>
+                <div id="room-info" class="room-pill">
+                    <span id="room-info-text">正在进入...</span>
+                    <button id="copy-room-id-btn" class="icon-btn" onclick="copyRoomInvite()" title="复制邀请">📋</button>
+                </div>
+            </div>
+            
+            <div class="top-bar-center">
+                <div id="status" class="status-indicator disconnected">未连接</div>
+            </div>
+            
+            <div class="top-bar-right">
+                <button id="perf-toggle" class="icon-btn" title="性能监控">📊</button>
+                <button id="help-toggle" class="icon-btn" onclick="toggleHelp()" title="操作指南">❓</button>
+                <button id="fullscreen-toggle" class="icon-btn" onclick="toggleFullscreen()" title="全屏 (F11)">⛶</button>
+                <div class="user-avatar-stack" id="user-count-badge">0</div>
+            </div>
+        </header>
+
+        <!-- 左侧主控制面板 -->
+        <aside id="main-sidebar" class="sidebar">
+            <div class="sidebar-content">
+                <section class="sidebar-section">
+                    <button id="scan-toggle-btn" class="primary-action-btn">
+                        <span class="icon">🏢</span> 空间扫描
+                    </button>
+                </section>
+
+                <section class="sidebar-section">
+                    <h4 class="section-title">📦 物体创建</h4>
+                    <div class="grid-tools">
+                        <button onclick="createCube()" title="方块 (1)">🟦</button>
+                        <button onclick="createSphere()" title="球体 (2)">🔵</button>
+                        <button onclick="createCylinder()" title="圆柱 (3)">🔶</button>
+                        <button onclick="createTorus()" title="圆环 (4)">🍩</button>
+                        <button onclick="createPyramid()" title="金字塔 (5)">🔺</button>
+                    </div>
+                </section>
+
+                <section class="sidebar-section">
+                    <h4 class="section-title">🖌️ 白板工具</h4>
+                    <div class="whiteboard-role-info">
+                        权限: <span id="whiteboard-role" class="role-member">成员</span>
+                    </div>
+                    <div class="tool-tabs">
+                        <button class="tool-tab active" data-tool="brush" onclick="whiteboardSystem.setTool('brush')">🖌️</button>
+                        <button class="tool-tab" data-tool="text" onclick="whiteboardSystem.setTool('text')">🔤</button>
+                        <button class="tool-tab" data-tool="arrow" onclick="whiteboardSystem.setTool('arrow')">↗️</button>
+                        <button class="tool-tab" data-tool="laser" onclick="whiteboardSystem.setTool('laser')">🔦</button>
+                        <button class="tool-tab" data-tool="eraser" onclick="whiteboardSystem.setTool('eraser')">🧽</button>
+                    </div>
+                    <div class="sub-controls">
+                        <div class="control-group">
+                            <label>颜色</label>
+                            <input type="color" id="wbColorPicker" value="#ff0000" onchange="whiteboardSystem.setBrushColor(this.value)">
+                        </div>
+                        <div class="control-group">
+                            <label>粗细</label>
+                            <input type="range" id="brushWidth" min="1" max="20" value="4" onchange="whiteboardSystem.setBrushWidth(this.value)">
+                        </div>
+                    </div>
+                    <div class="grid-tools secondary">
+                        <button onclick="createWhiteboardNearCamera()" title="创建白板">➕</button>
+                        <button onclick="whiteboardSystem.clearActive()" title="清空白板">🧹</button>
+                        <button onclick="whiteboardSystem.undo()" title="撤销">↩️</button>
+                        <button onclick="whiteboardSystem.redo()" title="重做">↪️</button>
+                    </div>
+                </section>
+
+                <section class="sidebar-section">
+                    <h4 class="section-title">📎 资源上传</h4>
+                    <div class="file-upload-box">
+                        <input type="file" id="file-input" hidden onchange="handleFileSelect(event)">
+                        <button class="upload-btn" onclick="document.getElementById('file-input').click()">上传文件</button>
+                        <div id="upload-status"></div>
+                    </div>
+                </section>
+
+                <section class="sidebar-section danger-zone">
+                    <h4 class="section-title">🗑️ 场景管理</h4>
+                    <button class="outline-btn" onclick="deleteAll()">清空场景</button>
+                </section>
+            </div>
+        </aside>
+
+        <!-- 右侧辅助面板 (抽屉式) -->
+        <aside id="utility-drawer" class="drawer">
+            <div class="drawer-header">
+                <div class="tabs">
+                    <button class="tab-btn active" data-tab="history">历史</button>
+                    <button class="tab-btn" data-tab="users">用户</button>
+                </div>
+                <button id="drawer-close" class="close-btn">×</button>
+            </div>
+            <div class="drawer-content">
+                <div id="history-tab" class="tab-panel active">
+                    <ul id="operation-history-list"></ul>
+                </div>
+                <div id="users-tab" class="tab-panel">
+                    <ul id="users-list"></ul>
+                </div>
+            </div>
+        </aside>
+
+        <!-- 底部移动端导航 -->
+        <nav id="mobile-nav">
+            <button class="nav-item" onclick="toggleSidebar()">
+                <span class="icon">🛠️</span>
+                <span>工具</span>
+            </button>
+            <button class="nav-item" onclick="toggleScan()">
+                <span class="icon">🏢</span>
+                <span>扫描</span>
+            </button>
+            <button class="nav-item" onclick="toggleChat()">
+                <span class="icon">💬</span>
+                <span>聊天</span>
+            </button>
+            <button class="nav-item" onclick="toggleDrawer()">
+                <span class="icon">📋</span>
+                <span>列表</span>
+            </button>
+        </nav>
+
+        <!-- 聊天面板 -->
+        <div id="chat-panel" class="floating-panel">
+            <div class="panel-header">
+                <span>💬 讨论组</span>
+                <button id="chat-close" class="close-btn">✕</button>
+            </div>
+            <div id="chat-messages"></div>
+            <div id="chat-input-row">
+                <input id="chat-input" type="text" placeholder="发送消息..." autocomplete="off">
+                <button id="chat-send">发送</button>
+            </div>
+        </div>
+        <button id="chat-fab" class="fab-btn">💬</button>
+
+        <!-- 语音控制 -->
+        <div id="voice-bar">
+            <button id="mic-toggle" class="mic-btn">🎤</button>
+            <div class="vol-meter">
+                <div id="volume-indicator"></div>
+            </div>
+        </div>
+
+        <!-- 房间管理面板 (初始状态) -->
+        <div id="join-modal" class="modal-overlay">
+            <div class="modal-content glass">
+                <h2>🎮 XR 协作空间</h2>
+                <div class="form-group">
+                    <label>你的昵称</label>
+                    <input type="text" id="username" placeholder="输入昵称" value="用户">
+                </div>
+                <div class="room-tabs">
+                    <button class="room-tab active" onclick="switchRoomMode('create')">创建</button>
+                    <button class="room-tab" onclick="switchRoomMode('join')">加入</button>
+                </div>
+                <div id="room-form-container">
+                    <!-- 动态内容 -->
+                </div>
+                <div class="public-rooms">
+                    <h4>公开房间</h4>
+                    <ul id="public-room-list"></ul>
+                </div>
+                <div id="join-error" class="error-msg"></div>
+            </div>
+        </div>
+
+        <!-- 帮助面板 -->
+        <div id="help-modal" class="modal-overlay" style="display:none">
+            <div class="modal-content help-content glass">
+                <header>
+                    <h3>💡 快捷指引</h3>
+                    <button onclick="toggleHelp()" class="close-btn">×</button>
+                </header>
+                <div class="help-scroll">
+                    <section>
+                        <h4>移动视角</h4>
+                        <p>WASD 移动，鼠标右键旋转，滚轮缩放</p>
+                    </section>
+                    <section>
+                        <h4>快捷键</h4>
+                        <div class="key-row"><span>1-5</span><span>创建物体</span></div>
+                        <div class="key-row"><span>Del</span><span>删除选中</span></div>
+                        <div class="key-row"><span>Ctrl+Z</span><span>撤销</span></div>
+                        <div class="key-row"><span>H</span><span>隐藏UI</span></div>
+                    </section>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 扫描结果面板 (由 scanning-ui.js 动态填充) -->
+    <div id="scan-panel" class="floating-panel" style="display:none"></div>
+
+    <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/cannon@0.6.2/build/cannon.min.js"></script>
+
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.1/build/three.module.js",
+            "three/addons/": "https://unpkg.com/three@0.160.1/examples/jsm/"
+        }
+    }
+    </script>
+    <script type="module" src="scanning-ui.js"></script>
+    <script type="module" src="app.js"></script>
+</body>
+</html>
