@@ -35,9 +35,12 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static("public"));
 
+const ScanManager = require("./scan-manager");
+
 const redis = new RedisStore();
 const roomManager = new RoomManager(redis);
 const workerBridge = new WorkerBridge();
+const scanManager = new ScanManager();
 const fileManager = new FileManager({
   storageRoot: process.env.FILE_STORAGE_PATH || path.join(process.cwd(), "backend", "storage"),
   publicBaseUrl: process.env.PUBLIC_BASE_URL || "",
@@ -724,6 +727,83 @@ app.delete("/api/files/:fileId", requireHttpAuth, async (req, res) => {
   });
 
   res.json({ success: true, fileId: deletedMeta.id });
+});
+
+// Scan endpoints
+app.post("/api/scan/session", async (req, res) => {
+  const { roomId, userId, deviceType, scannerType } = req.body || {};
+  
+  const normalizedRoomId = roomManager.normalizeRoomId(roomId);
+  if (!normalizedRoomId) {
+    res.status(400).json({ error: "roomId is required" });
+    return;
+  }
+
+  const room = await roomManager.getRoom(normalizedRoomId);
+  if (!room) {
+    res.status(404).json({ error: "Room not found" });
+    return;
+  }
+
+  const session = scanManager.createSession(normalizedRoomId, userId || "unknown", {
+    deviceType,
+    scannerType,
+    metadata: req.body.metadata || {}
+  });
+
+  res.status(201).json(session);
+});
+
+app.get("/api/scan/:scanId/status", (req, res) => {
+  const session = scanManager.getSession(req.params.scanId);
+  if (!session) {
+    res.status(404).json({ error: "Scan session not found" });
+    return;
+  }
+
+  res.json(session);
+});
+
+app.get("/api/scan/:scanId/pointcloud", (req, res) => {
+  const { limit, offset } = req.query;
+  const pointCloud = scanManager.getPointCloud(req.params.scanId, {
+    limit: limit ? parseInt(limit, 10) : 50000,
+    offset: offset ? parseInt(offset, 10) : 0
+  });
+
+  if (!pointCloud) {
+    res.status(404).json({ error: "Point cloud not found" });
+    return;
+  }
+
+  res.json(pointCloud);
+});
+
+app.get("/api/rooms/:roomId/scans", async (req, res) => {
+  const roomId = roomManager.normalizeRoomId(req.params.roomId);
+  if (!roomId) {
+    res.status(400).json({ error: "roomId is required" });
+    return;
+  }
+
+  const room = await roomManager.getRoom(roomId);
+  if (!room) {
+    res.status(404).json({ error: "Room not found" });
+    return;
+  }
+
+  const scans = scanManager.getRoomScans(roomId);
+  res.json({ roomId, scans });
+});
+
+app.delete("/api/scan/:scanId", (req, res) => {
+  const session = scanManager.deleteSession(req.params.scanId);
+  if (!session) {
+    res.status(404).json({ error: "Scan session not found" });
+    return;
+  }
+
+  res.json({ success: true, scanId: session.id });
 });
 
 // Worker endpoints
@@ -1630,6 +1710,134 @@ io.on("connection", (socket) => {
     const roomId = getCurrentRoomId(socket);
     if (!roomId) return;
     emitUserOperationHistory(socket, roomId);
+  });
+
+  // Scan events
+  socket.on("scan:create", async (data = {}) => {
+    const roomId = getCurrentRoomId(socket);
+    if (!roomId) {
+      socket.emit("scan:error", { message: "Not in a room" });
+      return;
+    }
+
+    const session = scanManager.createSession(roomId, socket.userId, {
+      deviceType: data.deviceType || 'unknown',
+      scannerType: data.scannerType || 'photogrammetry',
+      metadata: data.metadata || {}
+    });
+
+    socket.emit("scan:created", session);
+    io.to(roomId).emit("scan:state", {
+      scanId: session.id,
+      status: session.status,
+      userId: socket.userId,
+      username: socket.username
+    });
+  });
+
+  socket.on("scan:start", async (data = {}) => {
+    const { scanId } = data;
+    if (!scanId) return;
+
+    const session = scanManager.startScanning(scanId);
+    if (!session) {
+      socket.emit("scan:error", { scanId, message: "Scan session not found" });
+      return;
+    }
+
+    const roomId = getCurrentRoomId(socket);
+    if (roomId) {
+      io.to(roomId).emit("scan:state", {
+        scanId: session.id,
+        status: session.status,
+        userId: socket.userId,
+        username: socket.username
+      });
+    }
+  });
+
+  socket.on("scan:upload-chunk", async (data = {}) => {
+    const { scanId, points, frame } = data;
+    if (!scanId) return;
+
+    const result = scanManager.addPointCloudChunk(scanId, { points, frame });
+    if (!result) {
+      socket.emit("scan:error", { scanId, message: "Failed to add point cloud chunk" });
+      return;
+    }
+
+    const session = scanManager.getSession(scanId);
+    if (session) {
+      socket.emit("scan:progress", {
+        scanId,
+        pointCount: result.totalPoints,
+        framesCount: result.framesCount,
+        progress: Math.min(100, Math.floor((result.totalPoints / 100000) * 100))
+      });
+
+      const roomId = getCurrentRoomId(socket);
+      if (roomId) {
+        socket.to(roomId).emit("scan:preview:patch", {
+          scanId,
+          pointCount: result.totalPoints,
+          userId: socket.userId
+        });
+      }
+    }
+  });
+
+  socket.on("scan:complete", async (data = {}) => {
+    const { scanId } = data;
+    if (!scanId) return;
+
+    const session = scanManager.completeScanning(scanId);
+    if (!session) {
+      socket.emit("scan:error", { scanId, message: "Scan session not found" });
+      return;
+    }
+
+    const roomId = getCurrentRoomId(socket);
+    if (roomId) {
+      io.to(roomId).emit("scan:state", {
+        scanId: session.id,
+        status: session.status,
+        pointCount: session.pointCount,
+        userId: socket.userId,
+        username: socket.username
+      });
+
+      // 自动发布扫描结果到房间
+      setTimeout(() => {
+        const completedSession = scanManager.getSession(scanId);
+        if (completedSession && completedSession.status === 'completed') {
+          io.to(roomId).emit("scan:published", {
+            scanId: completedSession.id,
+            pointCount: completedSession.pointCount,
+            quality: completedSession.quality,
+            userId: socket.userId
+          });
+        }
+      }, 2000);
+    }
+  });
+
+  socket.on("scan:delete", async (data = {}) => {
+    const { scanId } = data;
+    if (!scanId) return;
+
+    const session = scanManager.deleteSession(scanId);
+    if (!session) {
+      socket.emit("scan:error", { scanId, message: "Scan session not found" });
+      return;
+    }
+
+    const roomId = getCurrentRoomId(socket);
+    if (roomId) {
+      io.to(roomId).emit("scan:deleted", {
+        scanId: session.id,
+        userId: socket.userId
+      });
+    }
   });
 
   const handleComputeTask = async (data = {}) => {

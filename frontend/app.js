@@ -4,6 +4,7 @@ import { VRButton } from 'three/addons/webxr/VRButton.js';
 import { XRControllerModelFactory } from 'three/addons/webxr/XRControllerModelFactory.js';
 
 import { WhiteboardSystem } from './lib/whiteboard-system.js';
+import { ScanningUI } from './scanning-ui.js';
 import { resolveFeatureFlags } from './lib/feature-flags.js';
 import { TextureCompressionManager } from './lib/texture-manager.js';
 import { PerformanceMonitor } from './lib/performance-monitor.js';
@@ -23,6 +24,7 @@ let renderer;
 let socket;
 let controls;
 let whiteboardSystem;
+let scanningUI;
 let textureManager;
 let perfMonitor;
 let shadowCascadeManager;
@@ -1610,6 +1612,13 @@ window.addEventListener('DOMContentLoaded', async () => {
 
     if (whiteboardSystem && socket) {
         whiteboardSystem.setSocket(socket);
+    }
+
+    // Initialize scanning UI
+    if (socket && scene && camera) {
+        scanningUI = new ScanningUI(socket, scene, camera);
+        window.scanUI = scanningUI;
+        console.log('✅ Scanning UI initialized');
     }
 
     initChatUI();
