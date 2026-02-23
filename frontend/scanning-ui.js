@@ -76,22 +76,33 @@ export class ScanningUI {
 
   addScanButton() {
     const controls = document.getElementById('controls');
-    if (!controls) return;
+    if (!controls) {
+      console.warn('Controls panel not found');
+      return;
+    }
 
     // 检查是否已存在
     if (document.getElementById('scan-toggle-btn')) return;
 
     const scanBtn = document.createElement('button');
     scanBtn.id = 'scan-toggle-btn';
-    scanBtn.className = 'btn btn-scan';
+    scanBtn.className = 'btn-scan';
     scanBtn.innerHTML = '🏢 扫描';
     scanBtn.onclick = () => this.togglePanel();
+    scanBtn.style.cssText = `
+      width: 100%;
+      margin-bottom: 12px;
+    `;
 
-    // 插入到控制面板顶部
-    const firstSection = controls.querySelector('.control-section');
-    if (firstSection) {
-      firstSection.insertBefore(scanBtn, firstSection.firstChild);
+    // 插入到控制面板第一个 h4 之前
+    const firstH4 = controls.querySelector('h4');
+    if (firstH4) {
+      controls.insertBefore(scanBtn, firstH4);
+    } else {
+      controls.insertBefore(scanBtn, controls.firstChild);
     }
+    
+    console.log('✅ Scan button added');
   }
 
   bindEvents() {
