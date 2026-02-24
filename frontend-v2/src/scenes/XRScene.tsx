@@ -1,40 +1,78 @@
+import { AdaptiveDpr, PerformanceMonitor, type PerformanceMonitorApi } from '@react-three/drei'
 import { Canvas } from '@react-three/fiber'
-import { XR, XROrigin, createXRStore } from '@react-three/xr'
-import { Suspense, useRef } from 'react'
+import { XR, XROrigin } from '@react-three/xr'
+import { Suspense, useCallback, useRef, useState } from 'react'
 import type { Group } from 'three'
-import { CameraRig } from './CameraRig'
-import { Environment } from './Environment'
-import { Objects } from './Objects'
-import { Physics } from './Physics'
-import { useSceneStore } from './sceneStore'
-
-export const xrStore = createXRStore({
-  frameRate: 'high',
-  foveation: 0.5,
-})
+import { DOMOverlay } from '../xr/DOMOverlay'
+import { useXRProvider } from '../xr/xrContext'
+import { BasicShapes } from './BasicShapes'
+import { VRControls } from './VRControls'
 
 export function XRScene() {
+  const { store } = useXRProvider()
   const originRef = useRef<Group>(null)
-  const setLocalPose = useSceneStore((state) => state.setLocalPose)
+
+  const [dpr, setDpr] = useState(1.25)
+  const [perfSnapshot, setPerfSnapshot] = useState({ fps: 60, factor: 0.5 })
+  const lastPerfUpdateRef = useRef(0)
+
+  const handlePerformanceChange = useCallback((api: PerformanceMonitorApi) => {
+    const now = performance.now()
+    if (now - lastPerfUpdateRef.current < 250) {
+      return
+    }
+
+    lastPerfUpdateRef.current = now
+
+    const nextDpr = Number((0.8 + api.factor * 1.2).toFixed(2))
+    setDpr((prev) => (Math.abs(prev - nextDpr) > 0.05 ? nextDpr : prev))
+
+    setPerfSnapshot((prev) => {
+      const next = {
+        fps: Math.round(api.fps),
+        factor: Number(api.factor.toFixed(2)),
+      }
+
+      return prev.fps === next.fps && prev.factor === next.factor ? prev : next
+    })
+  }, [])
 
   return (
     <Canvas
       shadows
+      dpr={dpr}
       gl={{ antialias: true, powerPreference: 'high-performance' }}
-      camera={{ fov: 75, near: 0.1, far: 1000, position: [0, 1.6, 5] }}
-      dpr={[1, 2]}
+      camera={{ fov: 70, near: 0.1, far: 160, position: [0, 1.6, 4.5] }}
     >
-      <XR store={xrStore}>
+      <PerformanceMonitor onChange={handlePerformanceChange} onFallback={() => setDpr(0.8)} />
+      <AdaptiveDpr pixelated />
+
+      <XR store={store}>
         <XROrigin ref={originRef} position={[0, 0, 0]}>
-          <CameraRig originRef={originRef} onPoseSync={setLocalPose} />
+          <VRControls originRef={originRef} />
+
+          <ambientLight intensity={0.55} />
+          <directionalLight
+            castShadow
+            intensity={1}
+            position={[5, 8, 4]}
+            shadow-mapSize-width={1024}
+            shadow-mapSize-height={1024}
+          />
+
+          <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow userData={{ isGround: true }}>
+            <planeGeometry args={[120, 120]} />
+            <meshStandardMaterial color="#0f172a" roughness={0.95} metalness={0.02} />
+          </mesh>
+
+          <gridHelper args={[120, 120, '#1f3b5c', '#1f3b5c']} position={[0, 0.01, 0]} />
+
+          <Suspense fallback={null}>
+            <BasicShapes qualityFactor={perfSnapshot.factor} />
+          </Suspense>
         </XROrigin>
 
-        <Physics>
-          <Environment />
-          <Suspense fallback={null}>
-            <Objects />
-          </Suspense>
-        </Physics>
+        <DOMOverlay fps={perfSnapshot.fps} dpr={dpr} />
       </XR>
     </Canvas>
   )

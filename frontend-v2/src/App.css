@@ -42,10 +42,40 @@
   background: rgba(255, 255, 255, 0.14);
   color: #f2f6ff;
   border-radius: 10px;
-  padding: 0.35rem 0.6rem;
+  padding: 0.35rem 0.8rem;
   font-size: 0.86rem;
+  cursor: pointer;
+}
+
+.hud-panel button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .hud-panel p {
   margin: 0.25rem 0;
+}
+
+.xr-dom-overlay {
+  position: fixed;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+  padding: 0.8rem;
+}
+
+.xr-dom-overlay__panel {
+  display: flex;
+  gap: 0.8rem;
+  align-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.65);
+  color: #f8fafc;
+  font-size: 0.75rem;
+  line-height: 1;
+  padding: 0.5rem 0.8rem;
 }
