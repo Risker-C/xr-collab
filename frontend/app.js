@@ -41,6 +41,16 @@ const users = new Map();
 let currentRoom = null;
 let currentUserId = null;
 
+function setCurrentRoom(roomId) {
+    currentRoom = roomId || null;
+    window.currentRoom = currentRoom;
+}
+
+function setCurrentUserId(userId) {
+    currentUserId = userId || null;
+    window.currentUserId = currentUserId;
+}
+
 // Position sync throttling (P4 performance fix)
 let lastPosSync = 0;
 let lastPos = new THREE.Vector3();
@@ -817,6 +827,8 @@ function initSocket() {
     });
 
     socket.on('disconnect', () => {
+        setCurrentRoom(null);
+        setCurrentUserId(null);
         updateStatus('Disconnected', false);
     });
 
@@ -830,7 +842,7 @@ function initSocket() {
 
     socket.on('room:joined', (payload = {}) => {
         const joinedRoom = payload.room || {};
-        currentRoom = joinedRoom.id || null;
+        setCurrentRoom(joinedRoom.id || null);
 
         clearSceneObjects();
         clearRemoteUsers();
@@ -973,9 +985,17 @@ function showJoinError(message) {
 }
 
 function showInRoomUI() {
-    document.getElementById('join-panel').style.display = 'none';
-    document.getElementById('controls').style.display = 'block';
-    document.getElementById('help-toggle').style.display = 'block';
+    const joinPanel = document.getElementById('join-panel');
+    if (joinPanel) joinPanel.style.display = 'none';
+
+    const controlsPanel = document.getElementById('controls');
+    if (controlsPanel) controlsPanel.style.display = 'block';
+
+    const helpToggle = document.getElementById('help-toggle');
+    if (helpToggle) helpToggle.style.display = 'block';
+
+    const roomBadge = document.getElementById('room-badge');
+    if (roomBadge) roomBadge.style.display = 'flex';
 
     const roomInfo = document.getElementById('room-info');
     if (roomInfo) roomInfo.style.display = 'flex';
@@ -1022,7 +1042,7 @@ function syncRoomUsers(roomUsers = []) {
         if (!userId) return;
 
         if (roomUser.socketId === socket.id) {
-            currentUserId = userId;
+            setCurrentUserId(userId);
             return;
         }
 
@@ -1466,7 +1486,8 @@ function displayWorkerResult(result) {
 
 function updateStatus(message, connected) {
     const statusEl = document.getElementById('status');
-    if (!statusEl) return;
+    const statusTextEl = document.getElementById('status-text');
+    const statusBadgeEl = document.getElementById('connection-status');
 
     const messages = {
         Connected: '已连接',
@@ -1475,8 +1496,21 @@ function updateStatus(message, connected) {
         'Computing collision...': '正在检测碰撞...'
     };
 
-    statusEl.textContent = messages[message] || message;
-    statusEl.className = connected ? 'connected' : 'disconnected';
+    const text = messages[message] || message;
+
+    if (statusEl) {
+        statusEl.textContent = text;
+        statusEl.className = connected ? 'connected' : 'disconnected';
+    }
+
+    if (statusTextEl) {
+        statusTextEl.textContent = text;
+    }
+
+    if (statusBadgeEl) {
+        statusBadgeEl.classList.toggle('connected', Boolean(connected));
+        statusBadgeEl.classList.toggle('disconnected', !connected);
+    }
 }
 
 function updateUsersList(roomUsers) {
@@ -1640,8 +1674,8 @@ window.addEventListener('DOMContentLoaded', async () => {
 
 window.createRoom = createRoom;
 window.joinRoom = joinRoom;
-window.currentRoom = currentRoom;
-window.currentUserId = currentUserId;
+setCurrentRoom(currentRoom);
+setCurrentUserId(currentUserId);
 window.refreshRoomList = refreshRoomList;
 window.joinPublicRoom = joinPublicRoom;
 window.copyRoomInvite = copyRoomInvite;

@@ -4,19 +4,24 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>XR Collab - 实时协作平台</title>
-    <link rel="stylesheet" href="style-v2.css">
+    <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="scanning.css">
 </head>
 <body>
     <!-- Canvas Container -->
     <div id="canvas-container"></div>
+
+    <!-- Legacy contract container -->
+    <div id="controls">
     
     <!-- Top Navigation Bar -->
     <nav id="top-nav">
         <div class="nav-left">
             <div class="logo">🎮 XR Collab</div>
             <div id="room-badge" style="display: none;">
-                <span id="room-name"></span>
+                <div id="room-info" style="display: none;">
+                    <span id="room-info-text"></span>
+                </div>
                 <button id="copy-invite" class="icon-btn" title="复制邀请">📋</button>
             </div>
         </div>
@@ -26,6 +31,7 @@
                 <span class="status-dot"></span>
                 <span id="status-text">未连接</span>
             </div>
+            <span id="status" style="display: none;" aria-hidden="true">未连接</span>
         </div>
         
         <div class="nav-right">
@@ -100,12 +106,13 @@
         
         <div class="drawer-content">
             <div class="drawer-section">
-                <h4>🕘 操作历史</h4>
+                <h4>🕘 操作历史 <span id="history-count">0 / 100</span></h4>
                 <div id="history-controls">
-                    <button onclick="requestUndo()">↩️ 撤销</button>
-                    <button onclick="requestRedo()">↪️ 重做</button>
+                    <button id="undo-btn" onclick="requestUndo()">↩️ 撤销</button>
+                    <button id="redo-btn" onclick="requestRedo()">↪️ 重做</button>
                 </div>
                 <ul id="operation-history-list"></ul>
+                <div id="worker-result" style="display: none;"></div>
             </div>
             
             <div class="drawer-section">
@@ -129,11 +136,13 @@
             <span>📝</span>
             <span>白板</span>
         </button>
-        <button class="bottom-nav-btn" onclick="toggleChat()">
+        <button id="chat-open-btn" class="bottom-nav-btn" onclick="toggleChat()">
             <span>💬</span>
             <span>聊天</span>
         </button>
     </nav>
+
+    </div>
 
     <!-- Join Panel (Modal) -->
     <div id="join-panel" class="modal-overlay">
@@ -172,7 +181,7 @@
     <div id="chat-panel" class="panel">
         <div class="panel-header">
             <span>💬 聊天</span>
-            <button id="chat-close">✕</button>
+            <button id="chat-toggle">✕</button>
         </div>
         <div id="chat-messages"></div>
         <div class="chat-input-row">
