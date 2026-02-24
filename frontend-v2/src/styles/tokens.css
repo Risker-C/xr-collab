@@ -1,0 +1,30 @@
+:root {
+  /* Spacing */
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 16px;
+  --spacing-lg: 24px;
+  --spacing-xl: 32px;
+  --spacing-xxl: 48px;
+
+  /* Border Radius */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 20px;
+  --radius-xl: 28px;
+  --radius-full: 9999px;
+
+  /* Typography Base */
+  --font-family-sf: "SF Pro Display", "SF Pro Icons", "Helvetica Neue", "Helvetica", "Arial", sans-serif;
+
+  /* Shadows (Depth) */
+  --shadow-level-1: 0 4px 12px rgba(0, 0, 0, 0.1);
+  --shadow-level-2: 0 8px 24px rgba(0, 0, 0, 0.15);
+  --shadow-level-3: 0 16px 48px rgba(0, 0, 0, 0.2);
+  --shadow-inner: inset 0 0.5px 1px rgba(255, 255, 255, 0.2);
+
+  /* Transitions */
+  --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-normal: 250ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-slow: 400ms cubic-bezier(0.4, 0, 0.2, 1);
+}
