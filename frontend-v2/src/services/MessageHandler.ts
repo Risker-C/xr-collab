@@ -65,8 +65,10 @@ const createDefaultDependencies = (): MessageHandlerDependencies => ({
 
 export class MessageHandler {
   private readonly routes = new Map<ServerMessageType, (message: ServerWebSocketMessage) => void>()
+  private readonly deps: MessageHandlerDependencies
 
-  constructor(private readonly deps: MessageHandlerDependencies = createDefaultDependencies()) {
+  constructor(deps: MessageHandlerDependencies = createDefaultDependencies()) {
+    this.deps = deps
     this.registerBuiltInRoutes()
   }
 

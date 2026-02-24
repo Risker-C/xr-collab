@@ -10,7 +10,7 @@ const createDeps = (): MessageHandlerDependencies => ({
     getParticipant: vi.fn(() => ({
       id: 'u1',
       username: 'Alice',
-      role: 'member',
+      role: 'member' as const,
       isOnline: true,
     })),
     setCurrentRoom: vi.fn(),

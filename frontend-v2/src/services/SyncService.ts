@@ -19,6 +19,7 @@ const distanceBetween = (left: Vector3Like, right: Vector3Like): number => {
 }
 
 export class SyncService {
+  private readonly sender: PoseSyncSender
   private readonly minIntervalMs: number
   private readonly minDistanceMeters: number
 
@@ -27,10 +28,8 @@ export class SyncService {
   private lastSentAt = 0
   private lastSentPose: UserPose | null = null
 
-  constructor(
-    private readonly sender: PoseSyncSender,
-    options: SyncServiceOptions = {},
-  ) {
+  constructor(sender: PoseSyncSender, options: SyncServiceOptions = {}) {
+    this.sender = sender
     this.minIntervalMs = options.minIntervalMs ?? 80 // 12.5Hz
     this.minDistanceMeters = options.minDistanceMeters ?? 0.02
   }

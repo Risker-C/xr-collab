@@ -12,17 +12,16 @@ interface ReconnectOptions {
   backoffFactor: number
 }
 
+export type SocketNativeEvent = Event | MessageEvent | CloseEvent
+
 export interface WebSocketLike {
   readonly readyState: number
   send: (data: string) => void
   close: (code?: number, reason?: string) => void
-  addEventListener: <K extends keyof WebSocketEventMap>(
-    type: K,
-    listener: (event: WebSocketEventMap[K]) => void,
-  ) => void
-  removeEventListener: <K extends keyof WebSocketEventMap>(
-    type: K,
-    listener: (event: WebSocketEventMap[K]) => void,
+  addEventListener: (type: 'open' | 'message' | 'error' | 'close', listener: (event: SocketNativeEvent) => void) => void
+  removeEventListener: (
+    type: 'open' | 'message' | 'error' | 'close',
+    listener: (event: SocketNativeEvent) => void,
   ) => void
 }
 
@@ -304,10 +303,11 @@ export class WebSocketService {
     this.emit('open', event)
   }
 
-  private readonly onMessage = (event: MessageEvent): void => {
-    this.emit('rawMessage', event)
+  private readonly onMessage = (event: SocketNativeEvent): void => {
+    const messageEvent = event as MessageEvent
+    this.emit('rawMessage', messageEvent)
 
-    const parsed = parseServerMessage(event.data)
+    const parsed = parseServerMessage(messageEvent.data)
     if (!parsed.ok) {
       this.emit('messageError', { raw: parsed.raw, reason: parsed.reason })
       return
@@ -322,13 +322,14 @@ export class WebSocketService {
     this.emit('error', event)
   }
 
-  private readonly onClose = (event: CloseEvent): void => {
+  private readonly onClose = (event: SocketNativeEvent): void => {
+    const closeEvent = event as CloseEvent
     const current = this.socket
     if (current) {
       this.detachSocketListeners(current)
     }
     this.socket = null
-    this.emit('close', event)
+    this.emit('close', closeEvent)
 
     if (this.manuallyClosed) {
       useConnectionStore.getState().markDisconnected()
