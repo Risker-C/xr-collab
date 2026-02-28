@@ -94,12 +94,16 @@ export class ScanningUI {
       margin-bottom: 12px;
     `;
 
-    // 插入到控制面板第一个 h4 之前
+    // 插入到控制面板
     const firstH4 = controls.querySelector('h4');
     if (firstH4) {
       controls.insertBefore(scanBtn, firstH4);
-    } else {
+    } else if (controls.firstChild && controls.firstChild.nodeType === 1) {
+      // firstChild存在且是元素节点
       controls.insertBefore(scanBtn, controls.firstChild);
+    } else {
+      // 安全fallback：直接appendChild
+      controls.appendChild(scanBtn);
     }
     
     console.log('✅ Scan button added');
