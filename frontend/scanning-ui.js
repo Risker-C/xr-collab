@@ -94,15 +94,14 @@ export class ScanningUI {
       margin-bottom: 12px;
     `;
 
-    // 插入到控制面板
-    const firstH4 = controls.querySelector('h4');
-    if (firstH4) {
-      controls.insertBefore(scanBtn, firstH4);
-    } else if (controls.firstChild && controls.firstChild.nodeType === 1) {
-      // firstChild存在且是元素节点
-      controls.insertBefore(scanBtn, controls.firstChild);
+    // 插入到控制面板 - 使用 :scope > 确保只匹配直接子元素
+    // 注意: controls.querySelector('h4') 会匹配嵌套的h4(非直接子元素),
+    // 用它做 insertBefore 的 referenceNode 会抛出 NotFoundError
+    const directChild = controls.querySelector(':scope > h4')
+                     || controls.querySelector(':scope > *');
+    if (directChild) {
+      controls.insertBefore(scanBtn, directChild);
     } else {
-      // 安全fallback：直接appendChild
       controls.appendChild(scanBtn);
     }
     

@@ -1685,31 +1685,66 @@ window.addEventListener('DOMContentLoaded', async () => {
     }
 
     // Initialize scanning UI (点云扫描)
+    // Wrapped in try-catch: ScanningUI failure must NOT block MLSharpUI init
     if (socket && scene && camera) {
-        scanningUI = new ScanningUI(socket, scene, camera);
-        window.scanUI = scanningUI;
-        console.log('✅ Scanning UI initialized');
+        try {
+            scanningUI = new ScanningUI(socket, scene, camera);
+            window.scanUI = scanningUI;
+            console.log('✅ Scanning UI initialized');
+        } catch (err) {
+            console.error('⚠️ ScanningUI init failed (non-blocking):', err);
+        }
     }
     
     // Initialize ML_Sharp UI (单图转3D)
-    if (scene && camera) {
-        mlsharpUI = new MLSharpUI(scene, camera);
-        window.mlsharpUI = mlsharpUI;
-        console.log('✅ ML_Sharp UI initialized');
-        
-        // 绑定HTML中的扫描按钮到ML_Sharp功能
-        const scanBtn = document.getElementById('scan-btn');
-        const mobileScanBtn = document.getElementById('mobile-scan-btn');
-        
-        if (scanBtn) {
-            scanBtn.addEventListener('click', () => {
-                mlsharpUI.togglePanel();
-            });
-            console.log('✅ Desktop scan button bound to ML_Sharp');
+    try {
+        if (scene && camera) {
+            mlsharpUI = new MLSharpUI(scene, camera);
+            window.mlsharpUI = mlsharpUI;
+            console.log("✅ ML_Sharp UI initialized successfully");
+            
+            // 绑定HTML中的扫描按钮到ML_Sharp功能
+            const scanBtn = document.getElementById("scan-btn");
+            const mobileScanBtn = document.getElementById("mobile-scan-btn");
+            
+            if (scanBtn) {
+                scanBtn.addEventListener("click", (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (window.mlsharpUI) {
+                        mlsharpUI.togglePanel();
+                    } else {
+                        console.error("❌ ML_Sharp UI not available");
+                        alert("扫描功能初始化失败，请刷新页面重试");
+                    }
+                });
+                console.log("✅ Desktop scan button bound to ML_Sharp");
+            } else {
+                console.warn("⚠️ Desktop scan button not found");
+            }
+            
+            if (mobileScanBtn) {
+                mobileScanBtn.addEventListener("click", (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (window.mlsharpUI) {
+                        mlsharpUI.togglePanel();
+                    } else {
+                        console.error("❌ ML_Sharp UI not available");
+                        alert("扫描功能初始化失败，请刷新页面重试");
+                    }
+                });
+                console.log("✅ Mobile scan button bound to ML_Sharp");
+            } else {
+                console.warn("⚠️ Mobile scan button not found");
+            }
+        } else {
+            console.error("❌ ML_Sharp UI initialization failed: scene or camera not available");
         }
-        
-        if (mobileScanBtn) {
-            mobileScanBtn.addEventListener('click', () => {
+    } catch (err) {
+        console.error("❌ ML_Sharp UI initialization error:", err);
+        window.mlsharpUI = null;
+    }
                 mlsharpUI.togglePanel();
             });
             console.log('✅ Mobile scan button bound to ML_Sharp');
