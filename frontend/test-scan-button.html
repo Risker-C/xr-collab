@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>扫描按钮测试</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background: #1a1a2e;
+            color: white;
+        }
+        .test-btn {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            margin: 10px;
+        }
+        .test-btn:hover {
+            transform: translateY(-2px);
+        }
+        #log {
+            background: rgba(255,255,255,0.1);
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 20px;
+            font-family: monospace;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+<body>
+    <h1>🧪 扫描按钮测试页面</h1>
+    
+    <h2>测试1: onclick属性</h2>
+    <button class="test-btn" id="mobile-scan-btn" onclick="openMLSharpPanel()">
+        🏢 移动端扫描按钮
+    </button>
+    
+    <h2>测试2: 全局函数</h2>
+    <button class="test-btn" onclick="testGlobalFunction()">
+        测试全局函数
+    </button>
+    
+    <h2>测试3: window.mlsharpUI</h2>
+    <button class="test-btn" onclick="checkMLSharpUI()">
+        检查mlsharpUI状态
+    </button>
+    
+    <div id="log"></div>
+    
+    <script>
+        const log = document.getElementById('log');
+        
+        function addLog(message) {
+            const timestamp = new Date().toLocaleTimeString();
+            log.textContent += `[${timestamp}] ${message}\n`;
+        }
+        
+        // 模拟MLSharpUI
+        window.mlsharpUI = {
+            togglePanel: function() {
+                addLog('✅ mlsharpUI.togglePanel() 被调用');
+                alert('扫描面板应该打开了！');
+            }
+        };
+        
+        // 实际的openMLSharpPanel函数
+        function openMLSharpPanel() {
+            addLog('🔵 openMLSharpPanel() 函数被调用');
+            if (window.mlsharpUI) {
+                addLog('✅ window.mlsharpUI 已存在');
+                window.mlsharpUI.togglePanel();
+            } else {
+                addLog('❌ window.mlsharpUI 不存在，延迟重试...');
+                setTimeout(() => {
+                    if (window.mlsharpUI) {
+                        addLog('✅ 重试成功，调用togglePanel()');
+                        window.mlsharpUI.togglePanel();
+                    } else {
+                        addLog('❌ 重试失败');
+                        alert('扫描功能正在加载中，请稍后再试');
+                    }
+                }, 1000);
+            }
+        }
+        
+        function testGlobalFunction() {
+            addLog('🔍 测试：直接调用openMLSharpPanel()');
+            openMLSharpPanel();
+        }
+        
+        function checkMLSharpUI() {
+            addLog('🔍 检查window.mlsharpUI状态:');
+            addLog('  存在: ' + (window.mlsharpUI ? '是' : '否'));
+            addLog('  类型: ' + typeof window.mlsharpUI);
+            if (window.mlsharpUI) {
+                addLog('  togglePanel: ' + typeof window.mlsharpUI.togglePanel);
+            }
+        }
+        
+        addLog('📝 测试页面已加载');
+        addLog('📝 window.mlsharpUI 已模拟初始化');
+    </script>
+</body>
+</html>
