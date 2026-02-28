@@ -18,9 +18,6 @@ import {
     ShadowCascadeManager
 } from './lib/performance-optimizer.js';
 
-// 将GLTFLoader添加到THREE全局对象，供mlsharp-ui使用
-THREE.GLTFLoader = GLTFLoader;
-
 const FEATURE_FLAGS = resolveFeatureFlags();
 
 let scene;

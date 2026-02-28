@@ -8,6 +8,8 @@
  * - 显示生成的3D模型
  */
 
+import { GLTFLoader } from 'https://unpkg.com/three@0.160.1/examples/jsm/loaders/GLTFLoader.js';
+
 export class MLSharpUI {
   constructor(scene, camera) {
     this.scene = scene;
@@ -300,7 +302,7 @@ export class MLSharpUI {
 
     try {
       // 加载GLB模型
-      const loader = new THREE.GLTFLoader();
+      const loader = new GLTFLoader();
       
       loader.load(
         this.currentModelUrl,
