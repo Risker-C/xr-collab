@@ -16,6 +16,7 @@ import { GlassCard, GlassButton } from '@/components/vision-pro'
 import { CaptureRing } from './CaptureRing'
 import { QualityIndicator } from './QualityIndicator'
 import { ProgressPanel } from './ProgressPanel'
+import { cameraService, CapturedPhoto } from '@/services/camera.service'
 
 interface CapturePoint {
   id: string
@@ -36,8 +37,10 @@ export function ARGuidance({ onPhotoCaptured, onComplete }: ARGuidanceProps) {
   const [anchorPosition, setAnchorPosition] = useState<[number, number, number]>([0, 0, 0])
   const [capturePoints, setCapturePoints] = useState<CapturePoint[]>([])
   const [currentPointIndex, setCurrentPointIndex] = useState(0)
-  const [capturedPhotos, setCapturedPhotos] = useState<File[]>([])
+  const [capturedPhotos, setCapturedPhotos] = useState<CapturedPhoto[]>([])
   const [overallQuality, setOverallQuality] = useState(0)
+  const [cameraInitialized, setCameraInitialized] = useState(false)
+  const [cameraError, setCameraError] = useState<string | null>(null)
 
   // 平面检测
   const hitTest = useHitTest((hitMatrix, hit) => {
@@ -50,6 +53,37 @@ export function ARGuidance({ onPhotoCaptured, onComplete }: ARGuidanceProps) {
       setAnchorPosition(position)
     }
   })
+
+  // 初始化相机
+  useEffect(() => {
+    async function initCamera() {
+      try {
+        setCameraError(null)
+        await cameraService.initialize({
+          video: {
+            facingMode: 'environment',
+            width: { ideal: 1920, min: 1280 },
+            height: { ideal: 1080, min: 720 }
+          }
+        })
+        setCameraInitialized(true)
+      } catch (error) {
+        console.error('相机初始化失败:', error)
+        setCameraError(error instanceof Error ? error.message : '相机初始化失败')
+      }
+    }
+
+    if (isPresenting && !cameraInitialized) {
+      initCamera()
+    }
+
+    return () => {
+      if (cameraInitialized) {
+        cameraService.stop()
+        setCameraInitialized(false)
+      }
+    }
+  }, [isPresenting, cameraInitialized])
 
   // 初始化拍摄点位（环形布局）
   useEffect(() => {
@@ -90,41 +124,53 @@ export function ARGuidance({ onPhotoCaptured, onComplete }: ARGuidanceProps) {
 
   // 拍照
   async function capturePhoto() {
+    if (!cameraInitialized) {
+      setCameraError('相机未初始化')
+      return
+    }
+
     const currentPoint = capturePoints[currentPointIndex]
     
-    // TODO: 实际的照片捕获逻辑
-    // const photo = await navigator.mediaDevices.getUserMedia({ video: true })
-    
-    // 模拟照片捕获
-    const mockPhoto = new File([], `photo_${currentPointIndex}.jpg`, { type: 'image/jpeg' })
-    const quality = Math.random() * 0.3 + 0.7 // 0.7-1.0质量分
+    try {
+      // 使用真实的相机API拍照
+      const capturedPhoto = await cameraService.capturePhoto({
+        quality: 0.9,
+        format: 'jpeg'
+      })
 
-    // 更新点位状态
-    setCapturePoints(prev => prev.map((point, idx) => ({
-      ...point,
-      status: idx === currentPointIndex ? 'captured' as const :
-              idx === currentPointIndex + 1 ? 'current' as const :
-              point.status,
-      quality: idx === currentPointIndex ? quality : point.quality
-    })))
+      // 更新点位状态
+      setCapturePoints(prev => prev.map((point, idx) => ({
+        ...point,
+        status: idx === currentPointIndex ? 'captured' as const :
+                idx === currentPointIndex + 1 ? 'current' as const :
+                point.status,
+        quality: idx === currentPointIndex ? capturedPhoto.quality : point.quality
+      })))
 
-    // 保存照片
-    setCapturedPhotos(prev => [...prev, mockPhoto])
-    
-    // 回调
-    onPhotoCaptured(mockPhoto, {
-      pointId: currentPoint.id,
-      position: currentPoint.position,
-      angle: currentPoint.angle,
-      quality
-    })
+      // 保存照片
+      setCapturedPhotos(prev => [...prev, capturedPhoto])
+      
+      // 回调
+      onPhotoCaptured(capturedPhoto.blob as File, {
+        pointId: currentPoint.id,
+        position: currentPoint.position,
+        angle: currentPoint.angle,
+        quality: capturedPhoto.quality,
+        metadata: capturedPhoto.metadata
+      })
 
-    // 移动到下一个点位
-    if (currentPointIndex < capturePoints.length - 1) {
-      setCurrentPointIndex(currentPointIndex + 1)
-    } else {
-      // 完成拍摄
-      onComplete(capturedPhotos)
+      // 移动到下一个点位
+      if (currentPointIndex < capturePoints.length - 1) {
+        setCurrentPointIndex(currentPointIndex + 1)
+      } else {
+        // 完成拍摄
+        const photoFiles = capturedPhotos.map(photo => photo.blob as File)
+        onComplete([...photoFiles, capturedPhoto.blob as File])
+      }
+
+    } catch (error) {
+      console.error('拍照失败:', error)
+      setCameraError(error instanceof Error ? error.message : '拍照失败')
     }
   }
 
@@ -141,6 +187,39 @@ export function ARGuidance({ onPhotoCaptured, onComplete }: ARGuidanceProps) {
     return (
       <GlassCard className="p-6">
         <p className="text-center">请进入AR模式开始拍摄</p>
+      </GlassCard>
+    )
+  }
+
+  // 相机错误处理
+  if (cameraError) {
+    return (
+      <GlassCard className="p-6">
+        <div className="text-center">
+          <div className="text-red-500 mb-4">📷</div>
+          <h3 className="text-lg font-semibold mb-2">相机访问失败</h3>
+          <p className="text-gray-400 mb-4">{cameraError}</p>
+          <GlassButton 
+            onClick={() => {
+              setCameraError(null)
+              setCameraInitialized(false)
+            }}
+          >
+            重试
+          </GlassButton>
+        </div>
+      </GlassCard>
+    )
+  }
+
+  // 相机初始化中
+  if (!cameraInitialized) {
+    return (
+      <GlassCard className="p-6">
+        <div className="text-center">
+          <div className="animate-spin text-2xl mb-4">📷</div>
+          <p className="text-gray-400">正在初始化相机...</p>
+        </div>
       </GlassCard>
     )
   }
