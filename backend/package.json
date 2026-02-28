@@ -4,6 +4,7 @@
   "description": "Production-grade WebXR real-time collaboration platform with distributed Python workers",
   "main": "backend/server.js",
   "scripts": {
+    "build": "cp -r frontend/* .vercel/output/static/ || exit 0",
     "start": "node backend/server.js",
     "dev": "nodemon backend/server.js",
     "test": "npm run test:unit",
