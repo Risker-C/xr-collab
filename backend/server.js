@@ -475,6 +475,10 @@ app.use("/api/ml-sharp", mlSharpRoutes);
 const zhitianxiaRoutes = require("./routes/zhitianxia");
 app.use("/api/zhitianxia", zhitianxiaRoutes);
 
+// KIRI Engine API routes (V0.1)
+const kiriRoutes = require("./routes/kiri");
+app.use("/api/kiri", kiriRoutes);
+
 // Auth endpoints
 app.post("/api/auth/login", (req, res) => {
   const { username } = req.body;
