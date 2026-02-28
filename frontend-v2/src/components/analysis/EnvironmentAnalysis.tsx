@@ -42,18 +42,18 @@ export const EnvironmentAnalysis: React.FC<EnvironmentAnalysisProps> = ({ analys
         <div className="border-t border-white/10 pt-4">
           <div className="text-sm text-white/60 mb-2">拍摄建议</div>
           <div className="grid grid-cols-2 gap-2 text-sm">
-            <div className=\"bg-white/5 p-2 rounded\">
-              <div className=\"text-blue-400 font-bold\">{analysis.capturePoints.length}</div>
-              <div className=\"text-xs text-white/40\">推荐点位</div>
+            <div className="bg-white/5 p-2 rounded">
+              <div className="text-blue-400 font-bold">{analysis.capturePoints.length}</div>
+              <div className="text-xs text-white/40">推荐点位</div>
             </div>
-            <div className=\"bg-white/5 p-2 rounded\">
-              <div className=\"text-purple-400 font-bold\">{analysis.estimatedPhotos}</div>
-              <div className=\"text-xs text-white/40\">预计照片</div>
+            <div className="bg-white/5 p-2 rounded">
+              <div className="text-purple-400 font-bold">{analysis.estimatedPhotos}</div>
+              <div className="text-xs text-white/40">预计照片</div>
             </div>
           </div>
         </div>
 
-        <div className=\"text-xs text-white/40 italic\">
+        <div className="text-xs text-white/40 italic mt-4">
           * 基于 Vision Pro 空间计算模型生成
         </div>
       </div>

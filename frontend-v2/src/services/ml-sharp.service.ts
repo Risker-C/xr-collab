@@ -79,6 +79,28 @@ export class MLSharpService {
   }
 
   /**
+   * 计算环形拍摄路径
+   * 基于分析结果生成更详细的坐标点
+   */
+  calculateCircularPath(
+    center: [number, number, number],
+    radius: number,
+    pointsCount: number
+  ): Array<{ position: [number, number, number]; angle: number }> {
+    const path = []
+    for (let i = 0; i < pointsCount; i++) {
+      const angle = (i / pointsCount) * Math.PI * 2
+      const x = center[0] + Math.cos(angle) * radius
+      const z = center[2] + Math.sin(angle) * radius
+      path.push({
+        position: [x, center[1], z] as [number, number, number],
+        angle: (angle * 180) / Math.PI
+      })
+    }
+    return path
+  }
+
+  /**
    * 检查服务健康状态
    */
   async healthCheck(): Promise<{ status: string; version: string }> {

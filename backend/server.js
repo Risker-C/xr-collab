@@ -471,6 +471,10 @@ app.get("/health", (req, res) => {
 const mlSharpRoutes = require("./routes/ml-sharp");
 app.use("/api/ml-sharp", mlSharpRoutes);
 
+// 知天下AI API routes (V0.2)
+const zhitianxiaRoutes = require("./routes/zhitianxia");
+app.use("/api/zhitianxia", zhitianxiaRoutes);
+
 // Auth endpoints
 app.post("/api/auth/login", (req, res) => {
   const { username } = req.body;
