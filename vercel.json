@@ -1,20 +1,15 @@
 {
   "version": 2,
-  "builds": [
-    {
-      "src": "frontend/**",
-      "use": "@vercel/static"
-    }
+  "outputDirectory": "frontend",
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/$1" }
   ],
-  "routes": [
+  "headers": [
     {
-      "src": "/(.*)",
-      "dest": "/frontend/$1"
+      "source": "/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }
+      ]
     }
-  ],
-  "github": {
-    "silent": false
-  },
-  "cleanUrls": false,
-  "trailingSlash": false
+  ]
 }
