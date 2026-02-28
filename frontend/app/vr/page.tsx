@@ -14,10 +14,10 @@ interface User {
 
 export default function VRPage() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const sceneRef = useRef<THREE.Scene>()
-  const rendererRef = useRef<THREE.WebGLRenderer>()
-  const cameraRef = useRef<THREE.PerspectiveCamera>()
-  const socketRef = useRef<Socket>()
+  const sceneRef = useRef<THREE.Scene | null>(null)
+  const rendererRef = useRef<THREE.WebGLRenderer | null>(null)
+  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null)
+  const socketRef = useRef<Socket | null>(null)
   
   const [isConnected, setIsConnected] = useState(false)
   const [roomId, setRoomId] = useState('')
