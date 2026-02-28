@@ -1,140 +1,205 @@
-# run.claw.cloud 部署指南
+# run.claw.cloud 镜像部署指南
 
-## 🚀 部署到 run.claw.cloud
+## 🚀 使用Docker镜像部署
 
-### 1. 准备部署文件
+### 1. 可用镜像
 
-项目已包含必要的部署文件：
-- `Dockerfile` - 容器化配置
-- `package.json` - 依赖管理
-- `backend/server.js` - 主服务器
+GitHub自动构建的镜像：
+```
+ghcr.io/risker-c/xr-collab:latest
+ghcr.io/risker-c/xr-collab:main
+```
 
 ### 2. 部署步骤
 
-#### 方法一：Git仓库部署（推荐）
 1. 访问 https://run.claw.cloud/
 2. 点击 "New Service" 或 "创建服务"
-3. 选择 "From Git Repository"
-4. 输入仓库地址：`https://github.com/Risker-C/xr-collab.git`
-5. 配置部署参数：
+3. 选择 "Docker Image"
+4. 输入镜像地址：
    ```
-   Build Command: npm install
-   Start Command: node backend/server.js
-   Port: 3001
+   ghcr.io/risker-c/xr-collab:latest
    ```
-
-#### 方法二：Docker部署
-1. 选择 "Docker Container"
-2. 使用现有的 Dockerfile
-3. 构建设置：
-   ```
-   Context: .
-   Dockerfile: ./Dockerfile
-   Port: 3001
-   ```
+5. 配置端口：`3001`
+6. 设置环境变量（见下方）
+7. 点击 "Deploy"
 
 ### 3. 环境变量配置
 
-在部署界面设置以下环境变量：
-
+**必需变量**：
 ```bash
-# 基础配置
 NODE_ENV=production
 PORT=3001
+HTTP_AUTH_USERNAME=admin
+HTTP_AUTH_PASSWORD=your_secure_password
+```
 
-# Redis配置（如果需要）
+**可选变量**：
+```bash
+# Redis配置
 REDIS_URL=redis://localhost:6379
 
-# API密钥（根据需要配置）
+# API密钥
 MODAL_API_KEY=your_modal_key
 KIRI_API_KEY=your_kiri_key
 ZHITIANXIA_API_KEY=your_zhitianxia_key
-
-# 安全配置
-HTTP_AUTH_USERNAME=admin
-HTTP_AUTH_PASSWORD=your_secure_password
 
 # 文件存储
 UPLOAD_MAX_SIZE=50mb
 STORAGE_PATH=/app/storage
 ```
 
-### 4. 资源配置建议
+### 4. 资源配置
 
+**推荐配置**：
 ```yaml
-# 推荐配置
 CPU: 1-2 cores
 Memory: 2-4 GB
-Storage: 10-20 GB
+Storage: 10-20 GB (持久化)
+Port: 3001
 ```
 
-### 5. 健康检查
-
-run.claw.cloud会自动检查以下端点：
-- `GET /health` - 健康检查
-- `GET /api/status` - API状态
-
-### 6. 域名配置
-
-部署成功后：
-1. 获取分配的域名（如：`your-app.run.claw.cloud`）
-2. 可选：绑定自定义域名
-3. 自动HTTPS证书
-
-### 7. 监控和日志
-
-- 实时日志：在控制台查看应用日志
-- 性能监控：CPU、内存、网络使用情况
-- 错误追踪：自动收集错误信息
-
-### 8. 扩展配置
-
-如需要扩展功能：
-```bash
-# 自动扩缩容
+**自动扩缩容**：
+```yaml
 Min Instances: 1
-Max Instances: 5
+Max Instances: 3
 CPU Threshold: 70%
 Memory Threshold: 80%
 ```
 
-## 🔧 部署后验证
+### 5. 健康检查
 
-部署完成后，访问以下端点验证：
+镜像内置健康检查：
+- 端点：`/health`
+- 间隔：30秒
+- 超时：10秒
+- 重试：3次
 
-1. **健康检查**：`https://your-app.run.claw.cloud/health`
-2. **API状态**：`https://your-app.run.claw.cloud/api/status`
-3. **ML_Sharp API**：`https://your-app.run.claw.cloud/api/ml-sharp/status`
-4. **WebSocket**：检查实时协作功能
+### 6. 存储卷配置
 
-## 📝 注意事项
+**持久化存储**：
+```yaml
+Volume Path: /app/storage
+Size: 10GB
+Type: Persistent
+```
 
-1. **文件存储**：run.claw.cloud提供持久化存储
-2. **WebSocket支持**：平台原生支持WebSocket连接
-3. **负载均衡**：自动处理高并发请求
-4. **SSL证书**：自动配置HTTPS
-5. **CDN加速**：静态资源自动加速
+用于存储：
+- 上传的图片
+- 生成的3D模型
+- 扫描数据
+- 临时文件
 
-## 🚨 常见问题
+### 7. 网络配置
 
-### 部署失败
-- 检查Dockerfile语法
-- 确认package.json依赖
-- 查看构建日志
+**端口映射**：
+- 容器端口：3001
+- 协议：HTTP/WebSocket
+- 健康检查：GET /health
 
-### 服务无法访问
-- 确认端口配置（3001）
-- 检查防火墙设置
-- 验证健康检查端点
+**域名访问**：
+- 自动分配：`your-app.run.claw.cloud`
+- 自定义域名：支持绑定
+- HTTPS：自动配置SSL证书
 
-### 性能问题
-- 增加CPU/内存配置
-- 启用自动扩缩容
-- 优化代码性能
+### 8. 镜像更新
 
-## 📞 支持
+**自动更新**：
+- 每次推送到main分支自动构建新镜像
+- 标签：`latest`, `main`, `sha-xxxxxx`
+
+**手动更新**：
+1. 在run.claw.cloud控制台
+2. 选择服务 → Settings
+3. 更新镜像标签
+4. 重新部署
+
+### 9. 监控和日志
+
+**实时监控**：
+- CPU/内存使用率
+- 网络流量
+- 请求响应时间
+- 错误率统计
+
+**日志查看**：
+- 应用日志：实时流式输出
+- 系统日志：容器启动/停止
+- 错误日志：异常堆栈跟踪
+
+### 10. 部署验证
+
+部署成功后访问以下端点：
+
+1. **健康检查**：
+   ```
+   GET https://your-app.run.claw.cloud/health
+   ```
+
+2. **API状态**：
+   ```
+   GET https://your-app.run.claw.cloud/api/status
+   ```
+
+3. **ML_Sharp状态**：
+   ```
+   GET https://your-app.run.claw.cloud/api/ml-sharp/status
+   ```
+
+4. **WebSocket测试**：
+   ```javascript
+   const socket = io('https://your-app.run.claw.cloud');
+   ```
+
+### 11. 故障排除
+
+**常见问题**：
+
+1. **镜像拉取失败**
+   - 检查镜像地址是否正确
+   - 确认GitHub Packages权限
+
+2. **服务启动失败**
+   - 查看启动日志
+   - 检查环境变量配置
+   - 验证端口设置
+
+3. **健康检查失败**
+   - 确认/health端点可访问
+   - 检查应用是否正常启动
+   - 验证端口3001是否监听
+
+4. **存储问题**
+   - 确认持久化卷已挂载
+   - 检查/app/storage权限
+   - 验证磁盘空间
+
+### 12. 安全配置
+
+**内置安全特性**：
+- 非root用户运行
+- HTTP基础认证
+- 文件类型验证
+- 请求速率限制
+- CORS配置
+
+**推荐设置**：
+- 强密码认证
+- 定期更新镜像
+- 监控异常访问
+- 备份重要数据
+
+## 📞 技术支持
 
 如遇问题：
-1. 查看run.claw.cloud文档
-2. 检查应用日志
-3. 联系平台技术支持
+1. 查看应用日志
+2. 检查健康检查状态
+3. 验证环境变量配置
+4. 联系run.claw.cloud技术支持
+
+---
+
+**镜像信息**：
+- 基础镜像：node:18-alpine
+- 架构：linux/amd64, linux/arm64
+- 大小：~200MB
+- 更新频率：每次代码推送
