@@ -526,8 +526,7 @@ app.get("/health", (req, res) => {
   res.json({ status: "ok" });
 });
 
-// ML_Sharp API routes (V0.3)
-const mlSharpRoutes = require("./routes/ml-sharp");
+// ML_Sharp API routes (V0.3) - 已在顶部声明
 app.use("/api/ml-sharp", mlSharpRoutes);
 
 // 知天下AI API routes (V0.2)
