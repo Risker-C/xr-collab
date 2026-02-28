@@ -2,9 +2,11 @@ import * as THREE from 'three';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 import { VRButton } from 'three/addons/webxr/VRButton.js';
 import { XRControllerModelFactory } from 'three/addons/webxr/XRControllerModelFactory.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 import { WhiteboardSystem } from './lib/whiteboard-system.js';
 import { ScanningUI } from './scanning-ui.js';
+import { MLSharpUI } from './mlsharp-ui.js';
 import { resolveFeatureFlags } from './lib/feature-flags.js';
 import { TextureCompressionManager } from './lib/texture-manager.js';
 import { PerformanceMonitor } from './lib/performance-monitor.js';
@@ -16,6 +18,9 @@ import {
     ShadowCascadeManager
 } from './lib/performance-optimizer.js';
 
+// 将GLTFLoader添加到THREE全局对象，供mlsharp-ui使用
+THREE.GLTFLoader = GLTFLoader;
+
 const FEATURE_FLAGS = resolveFeatureFlags();
 
 let scene;
@@ -25,6 +30,7 @@ let socket;
 let controls;
 let whiteboardSystem;
 let scanningUI;
+let mlsharpUI;
 let textureManager;
 let perfMonitor;
 let shadowCascadeManager;
@@ -1648,28 +1654,35 @@ window.addEventListener('DOMContentLoaded', async () => {
         whiteboardSystem.setSocket(socket);
     }
 
-    // Initialize scanning UI
+    // Initialize scanning UI (点云扫描)
     if (socket && scene && camera) {
         scanningUI = new ScanningUI(socket, scene, camera);
         window.scanUI = scanningUI;
         console.log('✅ Scanning UI initialized');
+    }
+    
+    // Initialize ML_Sharp UI (单图转3D)
+    if (scene && camera) {
+        mlsharpUI = new MLSharpUI(scene, camera);
+        window.mlsharpUI = mlsharpUI;
+        console.log('✅ ML_Sharp UI initialized');
         
-        // 绑定HTML中的扫描按钮事件
+        // 绑定HTML中的扫描按钮到ML_Sharp功能
         const scanBtn = document.getElementById('scan-btn');
         const mobileScanBtn = document.getElementById('mobile-scan-btn');
         
         if (scanBtn) {
             scanBtn.addEventListener('click', () => {
-                scanningUI.togglePanel();
+                mlsharpUI.togglePanel();
             });
-            console.log('✅ Desktop scan button bound');
+            console.log('✅ Desktop scan button bound to ML_Sharp');
         }
         
         if (mobileScanBtn) {
             mobileScanBtn.addEventListener('click', () => {
-                scanningUI.togglePanel();
+                mlsharpUI.togglePanel();
             });
-            console.log('✅ Mobile scan button bound');
+            console.log('✅ Mobile scan button bound to ML_Sharp');
         }
     }
 
