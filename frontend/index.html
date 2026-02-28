@@ -244,6 +244,21 @@
             }
         }
         
+        function createRoom() {
+            const roomName = document.getElementById('createRoomName').value || 'Room-' + Math.random().toString(36).substr(2, 6);
+            const isPublic = document.getElementById('createRoomPublic').checked;
+            const password = document.getElementById('createRoomPassword').value;
+            
+            // 构建URL参数
+            let url = `?room=${roomName}`;
+            if (!isPublic && password) {
+                url += `&password=${encodeURIComponent(password)}`;
+            }
+            
+            // 跳转到房间
+            window.location.href = url;
+        }
+        
         function toggleChat() {
             const panel = document.getElementById('chat-panel');
             panel.style.display = panel.style.display === 'none' ? 'flex' : 'none';
