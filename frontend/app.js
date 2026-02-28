@@ -1616,6 +1616,12 @@ function initRoomPrefillFromUrl() {
 
     const roomIdInput = document.getElementById('roomId');
     if (roomIdInput) roomIdInput.value = roomId.toUpperCase();
+    
+    // 自动加入房间
+    const password = new URLSearchParams(window.location.search).get('password');
+    setTimeout(() => {
+        joinRoom(roomId, password);
+    }, 1000); // 延迟1秒确保页面完全加载
 }
 
 function createWhiteboardNearCamera() {
