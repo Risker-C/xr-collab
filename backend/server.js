@@ -21,9 +21,40 @@ const {
 
 const app = express();
 const server = http.createServer(app);
+
+// CORS白名单配置
+const allowedOrigins = process.env.ALLOWED_ORIGINS 
+  ? process.env.ALLOWED_ORIGINS.split(',')
+  : [
+      'http://localhost:3000',
+      'http://localhost:5173',
+      'https://xr-collab.vercel.app',
+      'https://xr-collab-*.vercel.app'
+    ];
+
 const io = socketIO(server, {
   cors: {
-    origin: "*",
+    origin: function(origin, callback) {
+      // 允许没有origin的请求（比如移动应用或curl）
+      if (!origin) return callback(null, true);
+      
+      // 检查origin是否在白名单中
+      const isAllowed = allowedOrigins.some(allowed => {
+        if (allowed.includes('*')) {
+          // 支持通配符
+          const pattern = new RegExp('^' + allowed.replace(/\*/g, '.*') + '$');
+          return pattern.test(origin);
+        }
+        return allowed === origin;
+      });
+      
+      if (isAllowed) {
+        callback(null, true);
+      } else {
+        console.warn(`CORS阻止来自 ${origin} 的请求`);
+        callback(new Error('不允许的CORS来源'));
+      }
+    },
     methods: ["GET", "POST"],
     credentials: true
   },
@@ -31,8 +62,29 @@ const io = socketIO(server, {
   allowEIO3: true
 });
 
-app.use(cors());
-app.use(express.json());
+// HTTP CORS配置
+app.use(cors({
+  origin: function(origin, callback) {
+    if (!origin) return callback(null, true);
+    
+    const isAllowed = allowedOrigins.some(allowed => {
+      if (allowed.includes('*')) {
+        const pattern = new RegExp('^' + allowed.replace(/\*/g, '.*') + '$');
+        return pattern.test(origin);
+      }
+      return allowed === origin;
+    });
+    
+    if (isAllowed) {
+      callback(null, true);
+    } else {
+      callback(new Error('不允许的CORS来源'));
+    }
+  },
+  credentials: true
+}));
+
+app.use(express.json({ limit: '10mb' })); // 限制JSON body大小
 app.use(express.static("public"));
 
 const ScanManager = require("./scan-manager");

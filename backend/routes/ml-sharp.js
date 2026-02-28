@@ -11,6 +11,7 @@
 const express = require('express')
 const multer = require('multer')
 const MLSharpWorker = require('../ml-sharp-worker')
+const { presets: rateLimitPresets } = require('../rate-limiter')
 
 const router = express.Router()
 
@@ -37,8 +38,9 @@ const mlSharpWorker = new MLSharpWorker()
 /**
  * POST /api/ml-sharp/generate
  * 单图转3D生成
+ * 应用严格的速率限制（10次/10分钟）
  */
-router.post('/generate', upload.single('image'), async (req, res) => {
+router.post('/generate', rateLimitPresets.generation, upload.single('image'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({
@@ -72,8 +74,9 @@ router.post('/generate', upload.single('image'), async (req, res) => {
 /**
  * POST /api/ml-sharp/analyze
  * 环境识别和分析
+ * 应用标准速率限制（60次/分钟）
  */
-router.post('/analyze', upload.single('image'), async (req, res) => {
+router.post('/analyze', rateLimitPresets.standard, upload.single('image'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({
@@ -106,8 +109,9 @@ router.post('/analyze', upload.single('image'), async (req, res) => {
 /**
  * GET /api/ml-sharp/health
  * 健康检查
+ * 应用宽松速率限制（120次/分钟）
  */
-router.get('/health', async (req, res) => {
+router.get('/health', rateLimitPresets.relaxed, async (req, res) => {
   try {
     const health = await mlSharpWorker.healthCheck()
     
