@@ -1653,6 +1653,24 @@ window.addEventListener('DOMContentLoaded', async () => {
         scanningUI = new ScanningUI(socket, scene, camera);
         window.scanUI = scanningUI;
         console.log('✅ Scanning UI initialized');
+        
+        // 绑定HTML中的扫描按钮事件
+        const scanBtn = document.getElementById('scan-btn');
+        const mobileScanBtn = document.getElementById('mobile-scan-btn');
+        
+        if (scanBtn) {
+            scanBtn.addEventListener('click', () => {
+                scanningUI.togglePanel();
+            });
+            console.log('✅ Desktop scan button bound');
+        }
+        
+        if (mobileScanBtn) {
+            mobileScanBtn.addEventListener('click', () => {
+                scanningUI.togglePanel();
+            });
+            console.log('✅ Mobile scan button bound');
+        }
     }
 
     initChatUI();
