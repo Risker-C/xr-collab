@@ -816,7 +816,7 @@ function onMouseUp(event) {
 }
 
 function initSocket() {
-    socket = io(BACKEND_URL, {
+    socket = window.io(BACKEND_URL, {
         transports: ['polling', 'websocket'],
         reconnection: true,
         reconnectionDelay: 1000,
