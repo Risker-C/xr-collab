@@ -1,4 +1,2 @@
-{
-  "version": 2,
-  "outputDirectory": "frontend"
-}
+version: 2
+outputDirectory: frontend-next/out

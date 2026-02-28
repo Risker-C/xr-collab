@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>XR Collab UI Fix Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; }
+        .success { color: green; }
+        .error { color: red; }
+        .warning { color: orange; }
+    </style>
+</head>
+<body>
+    <h1>🔧 XR Collab 扫描UI修复测试</h1>
+    
+    <div class="test-section">
+        <h2>修复前问题</h2>
+        <ul>
+            <li class="error">❌ 扫描按钮显示"扫描功能正在加载中，请稍后再试"</li>
+            <li class="error">❌ window.mlsharpUI始终未定义</li>
+            <li class="error">❌ 双重事件绑定导致面板快速打开又关闭</li>
+            <li class="error">❌ onmousedown和onclick事件冲突</li>
+        </ul>
+    </div>
+    
+    <div class="test-section">
+        <h2>修复内容</h2>
+        <ul>
+            <li class="success">✅ 移除HTML中的内联事件处理器 (onclick, onmousedown)</li>
+            <li class="success">✅ 优化app.js中的事件绑定，添加preventDefault和stopPropagation</li>
+            <li class="success">✅ 添加完整的错误处理和用户反馈</li>
+            <li class="success">✅ 移除不必要的openMLSharpPanel函数</li>
+            <li class="success">✅ 改进控制台日志，便于调试</li>
+        </ul>
+    </div>
+    
+    <div class="test-section">
+        <h2>修复后预期效果</h2>
+        <ul>
+            <li class="success">✅ 扫描按钮点击后直接打开ML_Sharp面板</li>
+            <li class="success">✅ window.mlsharpUI正确初始化并可用</li>
+            <li class="success">✅ 单一事件处理，无冲突</li>
+            <li class="success">✅ 清晰的错误提示和调试信息</li>
+        </ul>
+    </div>
+    
+    <div class="test-section">
+        <h2>测试步骤</h2>
+        <ol>
+            <li>打开浏览器开发者工具控制台</li>
+            <li>刷新页面，查看初始化日志</li>
+            <li>应该看到: "✅ ML_Sharp UI initialized successfully"</li>
+            <li>应该看到: "✅ Desktop scan button bound to ML_Sharp"</li>
+            <li>点击扫描按钮，面板应该正常打开</li>
+            <li>再次点击关闭按钮，面板应该正常关闭</li>
+        </ol>
+    </div>
+    
+    <div class="test-section">
+        <h2>关键修改文件</h2>
+        <ul>
+            <li><strong>index.html</strong>: 移除按钮的内联事件处理器</li>
+            <li><strong>app.js</strong>: 优化MLSharpUI初始化和事件绑定</li>
+            <li><strong>mlsharp-ui.js</strong>: 保持不变（类定义正确）</li>
+        </ul>
+    </div>
+</body>
+</html>
