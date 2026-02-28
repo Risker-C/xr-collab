@@ -36,6 +36,7 @@ app.use(express.json());
 app.use(express.static("public"));
 
 const ScanManager = require("./scan-manager");
+const mlSharpRoutes = require("./routes/ml-sharp");
 
 const redis = new RedisStore();
 const roomManager = new RoomManager(redis);
@@ -465,6 +466,10 @@ app.get("/", (req, res) => {
 app.get("/health", (req, res) => {
   res.json({ status: "ok" });
 });
+
+// ML_Sharp API routes (V0.3)
+const mlSharpRoutes = require("./routes/ml-sharp");
+app.use("/api/ml-sharp", mlSharpRoutes);
 
 // Auth endpoints
 app.post("/api/auth/login", (req, res) => {

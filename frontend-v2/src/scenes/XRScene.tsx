@@ -3,6 +3,8 @@ import { Canvas } from '@react-three/fiber'
 import { XR, XROrigin } from '@react-three/xr'
 import { Suspense, useCallback, useRef, useState } from 'react'
 import type { Group } from 'three'
+import { ModelViewer } from '../components/3d/ModelViewer'
+import { useModelStore } from '../store/models.store'
 import { DOMOverlay } from '../xr/DOMOverlay'
 import { useXRProvider } from '../xr/xrContext'
 import { BasicShapes } from './BasicShapes'
@@ -11,6 +13,7 @@ import { VRControls } from './VRControls'
 export function XRScene() {
   const { store } = useXRProvider()
   const originRef = useRef<Group>(null)
+  const models = useModelStore((state) => state.models)
 
   const [dpr, setDpr] = useState(1.25)
   const [perfSnapshot, setPerfSnapshot] = useState({ fps: 60, factor: 0.5 })
@@ -69,6 +72,18 @@ export function XRScene() {
 
           <Suspense fallback={null}>
             <BasicShapes qualityFactor={perfSnapshot.factor} />
+            
+            {/* 渲染所有已生成的3D模型 */}
+            {models.map((model, index) => (
+              <ModelViewer
+                key={model.id}
+                url={model.url}
+                position={[index * 2 - models.length, 0, 0]} // 水平排列
+                scale={1}
+                onLoad={() => console.log(`模型 ${model.id} 加载完成`)}
+                onError={(error) => console.error(`模型 ${model.id} 加载失败:`, error)}
+              />
+            ))}
           </Suspense>
         </XROrigin>
 
