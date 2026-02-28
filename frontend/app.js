@@ -1187,8 +1187,18 @@ function joinPublicRoom(roomId, needPassword = false) {
 }
 
 function joinRoom(predefinedRoomId = null, predefinedPassword = null) {
-    if (!socket?.connected) {
-        showJoinError('尚未连接服务器，请稍后重试');
+    if (!socket) {
+        showJoinError('尚未初始化连接');
+        return;
+    }
+
+    // If socket is not yet connected, queue the join for when it connects
+    if (!socket.connected) {
+        showJoinError('正在连接服务器，请稍候...');
+        socket.once('connect', () => {
+            showJoinError('');
+            joinRoom(predefinedRoomId, predefinedPassword);
+        });
         return;
     }
 
@@ -1611,17 +1621,34 @@ function initChatUI() {
 }
 
 function initRoomPrefillFromUrl() {
-    const roomId = new URLSearchParams(window.location.search).get('room');
+    const params = new URLSearchParams(window.location.search);
+    const roomId = params.get('room');
     if (!roomId) return;
 
     const roomIdInput = document.getElementById('roomId');
     if (roomIdInput) roomIdInput.value = roomId.toUpperCase();
-    
-    // 自动加入房间
-    const password = new URLSearchParams(window.location.search).get('password');
-    setTimeout(() => {
-        joinRoom(roomId, password);
-    }, 1000); // 延迟1秒确保页面完全加载
+
+    const password = params.get('password') || null;
+
+    // Wait for socket connection before attempting to join.
+    // Render free-tier cold starts can take 30+ seconds,
+    // so a fixed timeout is unreliable. Use event-driven approach.
+    function attemptJoin() {
+        if (socket && socket.connected) {
+            joinRoom(roomId, password);
+        }
+    }
+
+    if (socket && socket.connected) {
+        // Already connected (e.g. localhost)
+        attemptJoin();
+    } else if (socket) {
+        // Wait for connection, then join
+        socket.once('connect', () => {
+            // Small delay to let room list load, then join
+            setTimeout(attemptJoin, 300);
+        });
+    }
 }
 
 function createWhiteboardNearCamera() {

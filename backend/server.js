@@ -1013,6 +1013,20 @@ io.on("connection", (socket) => {
         await leaveCurrentRoom(socket);
       }
 
+      // Auto-create room if it doesn't exist (supports URL-based room join)
+      let existingRoom = await roomManager.getRoom(incomingRoomId);
+      if (!existingRoom) {
+        console.log(`Room ${incomingRoomId} not found, auto-creating for ${socket.username}`);
+        await roomManager.createRoom({
+          roomId: incomingRoomId,
+          name: `Room ${incomingRoomId}`,
+          password: data.password || "",
+          isPublic: true,
+          ownerId: socket.userId
+        });
+        emitPublicRoomList();
+      }
+
       const trackedUser = users.get(socket.id) || {
         id: socket.userId,
         socketId: socket.id,

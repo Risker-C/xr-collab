@@ -244,20 +244,9 @@
             }
         }
         
-        function createRoom() {
-            const roomName = document.getElementById('createRoomName').value || 'Room-' + Math.random().toString(36).substr(2, 6);
-            const isPublic = document.getElementById('createRoomPublic').checked;
-            const password = document.getElementById('createRoomPassword').value;
-            
-            // 构建URL参数
-            let url = `?room=${roomName}`;
-            if (!isPublic && password) {
-                url += `&password=${encodeURIComponent(password)}`;
-            }
-            
-            // 跳转到房间
-            window.location.href = url;
-        }
+        // createRoom is provided by app.js module (proper backend API call).
+        // DO NOT define createRoom here - it would shadow the module version
+        // and cause page navigation without creating the room on the server.
         
         function toggleChat() {
             const panel = document.getElementById('chat-panel');
