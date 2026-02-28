@@ -41,8 +41,8 @@ const io = socketIO(server, {
       // 检查origin是否在白名单中
       const isAllowed = allowedOrigins.some(allowed => {
         if (allowed.includes('*')) {
-          // 支持通配符
-          const pattern = new RegExp('^' + allowed.replace(/\*/g, '.*') + '$');
+          // 安全的通配符匹配：转义点号，防止正则绕过
+          const pattern = new RegExp('^' + allowed.replace(/\./g, '\\.').replace(/\*/g, '[^.]*') + '$');
           return pattern.test(origin);
         }
         return allowed === origin;
@@ -69,7 +69,7 @@ app.use(cors({
     
     const isAllowed = allowedOrigins.some(allowed => {
       if (allowed.includes('*')) {
-        const pattern = new RegExp('^' + allowed.replace(/\*/g, '.*') + '$');
+        const pattern = new RegExp('^' + allowed.replace(/\./g, '\\.').replace(/\*/g, '[^.]*') + '$');
         return pattern.test(origin);
       }
       return allowed === origin;
@@ -89,6 +89,7 @@ app.use(express.static("public"));
 
 const ScanManager = require("./scan-manager");
 const mlSharpRoutes = require("./routes/ml-sharp");
+const { presets: rateLimitPresets } = require("./rate-limiter");
 
 const redis = new RedisStore();
 const roomManager = new RoomManager(redis);
@@ -99,6 +100,12 @@ const fileManager = new FileManager({
   publicBaseUrl: process.env.PUBLIC_BASE_URL || "",
   cdnBaseUrl: process.env.CDN_BASE_URL || ""
 });
+
+// 全局速率限制 - 应用于所有POST/DELETE操作
+app.use('/api/auth', rateLimitPresets.strict);        // 认证接口严格限制
+app.use('/api/rooms', rateLimitPresets.standard);     // 房间操作标准限制  
+app.use('/api/files/upload', rateLimitPresets.upload); // 文件上传限制
+app.use('/api/scan', rateLimitPresets.standard);      // 扫描接口标准限制
 
 const operationLogs = new OperationLogManager({
   maxSteps: 100,
@@ -710,12 +717,21 @@ app.get("/api/files/:fileId", (req, res) => {
   res.json(fileMeta);
 });
 
-app.get("/api/files/:fileId/content", async (req, res) => {
+app.get("/api/files/:fileId/content", requireHttpAuth, async (req, res) => {
   const target = fileManager.getVariantPath(req.params.fileId, "content");
   if (!target) {
     res.status(404).json({ error: "File not found" });
     return;
   }
+
+  // TODO: 验证用户是否有权访问此文件（检查文件所属房间权限）
+  // const file = fileManager.getFile(req.params.fileId);
+  // if (file && file.roomId) {
+  //   const room = roomManager.getRoom(file.roomId);
+  //   if (!room || !room.members.includes(req.user.id)) {
+  //     return res.status(403).json({ error: "无权访问此文件" });
+  //   }
+  // }
 
   res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
   res.type(target.contentType || "application/octet-stream");

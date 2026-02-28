@@ -12,6 +12,7 @@ const express = require('express')
 const multer = require('multer')
 const MLSharpWorker = require('../ml-sharp-worker')
 const { presets: rateLimitPresets } = require('../rate-limiter')
+const FileTypeValidator = require('../file-type-validator')
 
 const router = express.Router()
 
@@ -22,14 +23,13 @@ const upload = multer({
     fileSize: 10 * 1024 * 1024, // 10MB限制
     files: 1
   },
-  fileFilter: (req, file, cb) => {
-    // 只允许图片文件
-    if (file.mimetype.startsWith('image/')) {
-      cb(null, true)
-    } else {
-      cb(new Error('只支持图片文件'), false)
-    }
-  }
+  fileFilter: FileTypeValidator.createMulterFilter(['image/*'])
+})
+
+// 文件类型验证中间件
+const validateFileType = FileTypeValidator.createValidationMiddleware({
+  allowedTypes: ['image/*'],
+  maxSize: 10 * 1024 * 1024
 })
 
 // 创建Worker实例
@@ -38,9 +38,9 @@ const mlSharpWorker = new MLSharpWorker()
 /**
  * POST /api/ml-sharp/generate
  * 单图转3D生成
- * 应用严格的速率限制（10次/10分钟）
+ * 应用严格的速率限制（10次/10分钟）+ 文件类型验证
  */
-router.post('/generate', rateLimitPresets.generation, upload.single('image'), async (req, res) => {
+router.post('/generate', rateLimitPresets.generation, upload.single('image'), validateFileType, async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({
@@ -74,9 +74,9 @@ router.post('/generate', rateLimitPresets.generation, upload.single('image'), as
 /**
  * POST /api/ml-sharp/analyze
  * 环境识别和分析
- * 应用标准速率限制（60次/分钟）
+ * 应用标准速率限制（60次/分钟）+ 文件类型验证
  */
-router.post('/analyze', rateLimitPresets.standard, upload.single('image'), async (req, res) => {
+router.post('/analyze', rateLimitPresets.standard, upload.single('image'), validateFileType, async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({
