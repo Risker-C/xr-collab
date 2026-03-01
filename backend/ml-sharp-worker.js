@@ -67,16 +67,25 @@ class MLSharpWorker {
           // 将图片转换为Blob
           const imageBlob = new Blob([imageBuffer], { type: 'image/jpeg' })
           
-          // 调用Apple Sharp的predict方法
-          const result = await client.predict(imageBlob, {
-            api_name: "/predict"
-          })
+          // 调用Apple Sharp的/run_sharp API
+          // 参数：image_path, trajectory_type, output_long_side, num_frames, fps, render_video
+          const result = await client.predict(
+            imageBlob,  // image_path
+            "rotate_forward",  // trajectory_type
+            "0",  // output_long_side (0=原始分辨率)
+            60,  // num_frames
+            30,  // fps
+            true,  // render_video
+            {
+              api_name: "/run_sharp"
+            }
+          )
           
           const processingTime = Date.now() - startTime
           
-          if (result && result.data && result.data.length > 0) {
-            // Apple Sharp返回3D Gaussian Splats (.ply文件)
-            let modelUrl = result.data[0]
+          if (result && result.data && result.data.length >= 2) {
+            // 返回值：[0]=视频, [1]=.PLY文件, [2]=Markdown信息
+            let modelUrl = result.data[1]  // .PLY文件在索引1
             
             // 如果是相对路径，构建完整URL
             if (typeof modelUrl === 'string') {
@@ -108,7 +117,8 @@ class MLSharpWorker {
                   faces: 0, // Gaussian Splats不是传统网格
                   format: 'ply',
                   source: 'apple-sharp-spaces',
-                  provider: 'huggingface-zerogpu'
+                  provider: 'huggingface-zerogpu',
+                  videoUrl: result.data[0] || null  // 可选：视频预览
                 }
               }
               
