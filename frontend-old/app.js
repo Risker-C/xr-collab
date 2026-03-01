@@ -109,6 +109,24 @@ function resolveBackendUrl() {
 
 const BACKEND_URL = resolveBackendUrl();
 
+let csrfTokenCache = null;
+
+async function getCsrfToken(forceRefresh = false) {
+    if (csrfTokenCache && !forceRefresh) return csrfTokenCache;
+    const response = await fetch(`${BACKEND_URL}/api/csrf-token`, {
+        credentials: 'include'
+    });
+    if (!response.ok) {
+        throw new Error('无法获取CSRF Token');
+    }
+    const data = await response.json();
+    csrfTokenCache = data.csrfToken;
+    return csrfTokenCache;
+}
+
+window.getCsrfToken = getCsrfToken;
+
+
 function initPhysics() {
     world = new CANNON.World();
     world.gravity.set(0, -9.82, 0);
@@ -566,16 +584,31 @@ function renderOperationHistory(history = {}) {
         ...(operationHistory.redoStack || []).map((item) => ({ ...item, state: 'undone' }))
     ].slice(0, 40);
 
+    listEl.textContent = '';
+
     if (!entries.length) {
-        listEl.innerHTML = '<li class="undone">暂无可视化历史</li>';
+        const li = document.createElement('li');
+        li.className = 'undone';
+        li.textContent = '暂无可视化历史';
+        listEl.appendChild(li);
         return;
     }
 
-    listEl.innerHTML = entries.map((entry) => {
+    entries.forEach((entry) => {
         const timestamp = new Date(entry.timestamp || Date.now()).toLocaleTimeString();
         const objectPart = entry.objectId ? ` #${entry.objectId}` : '';
-        return `<li class="${entry.state}">${entry.label || entry.type}${objectPart}<br><small>${timestamp}</small></li>`;
-    }).join('');
+
+        const li = document.createElement('li');
+        li.className = entry.state;
+        li.appendChild(document.createTextNode(`${entry.label || entry.type}${objectPart}`));
+        li.appendChild(document.createElement('br'));
+
+        const small = document.createElement('small');
+        small.textContent = timestamp;
+        li.appendChild(small);
+
+        listEl.appendChild(li);
+    });
 }
 
 function requestUndo() {
@@ -1092,12 +1125,16 @@ function renderPublicRoomList(rooms = []) {
     if (!listEl) return;
 
     if (!Array.isArray(rooms) || rooms.length === 0) {
-        listEl.innerHTML = '<li class="empty-room">暂无公开房间</li>';
+        listEl.textContent = '';
+        const li = document.createElement('li');
+        li.className = 'empty-room';
+        li.textContent = '暂无公开房间';
+        listEl.appendChild(li);
         return;
     }
 
     // Clear existing content
-    listEl.innerHTML = '';
+    listEl.textContent = '';
     
     // Create room items safely using DOM API
     rooms.forEach(room => {
@@ -1145,9 +1182,14 @@ async function createRoom() {
     }
 
     try {
+        const csrfToken = await getCsrfToken();
         const response = await fetch(`${BACKEND_URL}/api/rooms`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-Token': csrfToken
+            },
+            credentials: 'include',
             body: JSON.stringify({
                 name: roomName || `${username} 的房间`,
                 password,
@@ -1468,7 +1510,7 @@ function displayWorkerResult(result) {
     if (!resultDiv) return;
 
     // Clear existing content
-    resultDiv.innerHTML = '';
+    resultDiv.textContent = '';
     
     if (result.status === 'completed' && result.result) {
         const strong = document.createElement('strong');
@@ -1537,7 +1579,7 @@ function updateUsersList(roomUsers) {
         }
 
         // Clear and rebuild user list safely
-        listEl.innerHTML = '';
+        listEl.textContent = '';
         roomUsers.forEach(u => {
             const userId = u.id || u.userId;
             const isSelf = (u.socketId && socket && u.socketId === socket.id) || (currentUserId && userId === currentUserId);
@@ -1571,7 +1613,7 @@ function renderChatHistory(history = []) {
     const chatMessages = document.getElementById('chat-messages');
     if (!chatMessages) return;
 
-    chatMessages.innerHTML = '';
+    chatMessages.textContent = '';
     history.forEach((msg) => appendChatMessage(msg));
 }
 

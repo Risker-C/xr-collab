@@ -87,7 +87,7 @@ export class ScanningUI {
     const scanBtn = document.createElement('button');
     scanBtn.id = 'scan-toggle-btn';
     scanBtn.className = 'btn-scan';
-    scanBtn.innerHTML = '🏢 扫描';
+    scanBtn.textContent = '🏢 扫描';
     scanBtn.onclick = () => this.togglePanel();
     scanBtn.style.cssText = `
       width: 100%;
@@ -287,9 +287,9 @@ export class ScanningUI {
 
     // 更新按钮状态
     if (pauseBtn) {
-      pauseBtn.innerHTML = status === 'paused' 
-        ? '<span class="icon">▶️</span> 继续'
-        : '<span class="icon">⏸️</span> 暂停';
+      pauseBtn.textContent = status === 'paused'
+        ? '▶️ 继续'
+        : '⏸️ 暂停';
     }
   }
 
@@ -350,31 +350,69 @@ export class ScanningUI {
     const listEl = document.getElementById('scan-history-list');
     if (!listEl) return;
 
+    listEl.textContent = '';
+
     if (this.scanHistory.length === 0) {
-      listEl.innerHTML = '<div class="empty-state">暂无扫描记录</div>';
+      const empty = document.createElement('div');
+      empty.className = 'empty-state';
+      empty.textContent = '暂无扫描记录';
+      listEl.appendChild(empty);
       return;
     }
 
-    listEl.innerHTML = this.scanHistory.map(scan => `
-      <div class="scan-history-item" data-scan-id="${scan.id}">
-        <div class="scan-info">
-          <div class="scan-name">${this.formatScanName(scan)}</div>
-          <div class="scan-meta">
-            <span>${this.formatNumber(scan.pointCount)} 点</span>
-            <span>${this.getQualityLabel(scan.quality)}</span>
-            <span>${this.formatDate(scan.createdAt)}</span>
-          </div>
-        </div>
-        <div class="scan-actions">
-          <button class="btn-icon" onclick="window.scanUI.loadScan('${scan.id}')" title="加载">
-            👁️
-          </button>
-          <button class="btn-icon" onclick="window.scanUI.deleteScan('${scan.id}')" title="删除">
-            🗑️
-          </button>
-        </div>
-      </div>
-    `).join('');
+    this.scanHistory.forEach((scan) => {
+      const item = document.createElement('div');
+      item.className = 'scan-history-item';
+      item.dataset.scanId = scan.id;
+
+      const info = document.createElement('div');
+      info.className = 'scan-info';
+
+      const name = document.createElement('div');
+      name.className = 'scan-name';
+      name.textContent = this.formatScanName(scan);
+
+      const meta = document.createElement('div');
+      meta.className = 'scan-meta';
+
+      const pointSpan = document.createElement('span');
+      pointSpan.textContent = `${this.formatNumber(scan.pointCount)} 点`;
+
+      const qualitySpan = document.createElement('span');
+      qualitySpan.textContent = this.getQualityLabel(scan.quality);
+
+      const dateSpan = document.createElement('span');
+      dateSpan.textContent = this.formatDate(scan.createdAt);
+
+      meta.appendChild(pointSpan);
+      meta.appendChild(qualitySpan);
+      meta.appendChild(dateSpan);
+
+      info.appendChild(name);
+      info.appendChild(meta);
+
+      const actions = document.createElement('div');
+      actions.className = 'scan-actions';
+
+      const loadBtn = document.createElement('button');
+      loadBtn.className = 'btn-icon';
+      loadBtn.title = '加载';
+      loadBtn.textContent = '👁️';
+      loadBtn.addEventListener('click', () => this.loadScan(scan.id));
+
+      const deleteBtn = document.createElement('button');
+      deleteBtn.className = 'btn-icon';
+      deleteBtn.title = '删除';
+      deleteBtn.textContent = '🗑️';
+      deleteBtn.addEventListener('click', () => this.deleteScan(scan.id));
+
+      actions.appendChild(loadBtn);
+      actions.appendChild(deleteBtn);
+
+      item.appendChild(info);
+      item.appendChild(actions);
+      listEl.appendChild(item);
+    });
   }
 
   loadScan(scanId) {

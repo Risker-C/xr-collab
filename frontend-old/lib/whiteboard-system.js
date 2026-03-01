@@ -924,15 +924,33 @@ export class WhiteboardSystem {
         if (count) count.textContent = `${this.operationLog.length}`;
         if (!list) return;
 
+        list.textContent = '';
+
         if (!this.operationLog.length) {
-            list.innerHTML = '<li class="empty-room">暂无白板操作</li>';
+            const li = document.createElement('li');
+            li.className = 'empty-room';
+            li.textContent = '暂无白板操作';
+            list.appendChild(li);
             return;
         }
 
-        list.innerHTML = this.operationLog.slice(0, 30).map((item) => {
+        this.operationLog.slice(0, 30).forEach((item) => {
             const time = new Date(item.timestamp).toLocaleTimeString();
-            return `<li><strong>${item.type}</strong> · ${item.whiteboardId}<br><small>${time}</small></li>`;
-        }).join('');
+            const li = document.createElement('li');
+
+            const strong = document.createElement('strong');
+            strong.textContent = item.type;
+            li.appendChild(strong);
+
+            li.appendChild(document.createTextNode(` · ${item.whiteboardId}`));
+            li.appendChild(document.createElement('br'));
+
+            const small = document.createElement('small');
+            small.textContent = time;
+            li.appendChild(small);
+
+            list.appendChild(li);
+        });
     }
 
     renderWhiteboardList() {
@@ -940,12 +958,16 @@ export class WhiteboardSystem {
         if (!list) return;
 
         if (!this.whiteboards.size) {
-            list.innerHTML = '<li class="empty-room">暂无白板</li>';
+            list.textContent = '';
+            const li = document.createElement('li');
+            li.className = 'empty-room';
+            li.textContent = '暂无白板';
+            list.appendChild(li);
             return;
         }
 
         // Clear and rebuild whiteboard list safely
-        list.innerHTML = '';
+        list.textContent = '';
         Array.from(this.whiteboards.keys()).forEach(id => {
             const active = id === this.activeWhiteboardId ? 'active-board' : '';
             

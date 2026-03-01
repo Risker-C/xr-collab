@@ -5,6 +5,7 @@
 
 const { getInstance: getRedisClient } = require('./redis-client');
 const { getInstance: getR2Client } = require('./r2-client');
+const { getInstance: getSupabaseClient } = require('./supabase-client');
 
 function normalizeUsername(username) {
   return String(username || '').trim().toLowerCase();
@@ -14,6 +15,7 @@ class StorageAdapter {
   constructor() {
     this.redis = null;
     this.r2 = null;
+    this.supabase = null;
     this.initialized = false;
     this.memoryUsers = new Map();
     this.memoryUsersByUsername = new Map();
@@ -41,6 +43,15 @@ class StorageAdapter {
         }
       } else {
         console.warn('⚠️  R2 credentials not configured, using local storage');
+      }
+
+
+      // 初始化Supabase
+      if (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY) {
+        this.supabase = getSupabaseClient();
+        console.log('Supabase storage initialized');
+      } else {
+        console.warn('Supabase not configured, persistence disabled');
       }
 
       this.initialized = true;
@@ -220,7 +231,8 @@ class StorageAdapter {
   async healthCheck() {
     const status = {
       redis: false,
-      r2: false
+      r2: false,
+      supabase: false
     };
 
     if (this.redis) {
@@ -241,6 +253,10 @@ class StorageAdapter {
       }
     }
 
+    if (this.supabase) {
+      status.supabase = true;
+    }
+
     return status;
   }
 
@@ -248,6 +264,56 @@ class StorageAdapter {
     if (this.redis) {
       await this.redis.disconnect();
     }
+  }
+}
+
+class DataSyncService {
+  constructor(redis, supabase) {
+    this.redis = redis;
+    this.supabase = supabase;
+  }
+
+  // Hot data (Redis) -> cold data (Supabase) sync
+  async syncChatMessages() {
+    const rooms = await this.redis.keys('chat:*');
+    for (const roomKey of rooms) {
+      const roomId = roomKey.replace('chat:', '');
+      const messages = await this.redis.getChatMessages(roomId);
+
+      // Batch save to Supabase
+      for (const message of messages) {
+        await this.supabase.saveChatMessage({
+          room_id: roomId,
+          user_id: message.userId,
+          message: message.text,
+          created_at: new Date(message.timestamp)
+        });
+      }
+    }
+  }
+
+  // Room data sync
+  async syncRooms() {
+    const rooms = await this.redis.getAllRooms();
+    for (const room of rooms) {
+      await this.supabase.createRoom({
+        room_id: room.id,
+        name: room.name,
+        password_hash: room.passwordHash,
+        is_public: room.isPublic,
+        max_users: room.maxUsers,
+        created_by: room.ownerId
+      });
+    }
+  }
+
+  // Start scheduled sync
+  startSync() {
+    // Sync chat messages every 5 minutes
+    setInterval(() => this.syncChatMessages(), 5 * 60 * 1000);
+
+    // Sync room data every hour
+    setInterval(() => this.syncRooms(), 60 * 60 * 1000);
   }
 }
 
@@ -261,5 +327,6 @@ module.exports = {
     }
     return instance;
   },
-  StorageAdapter
+  StorageAdapter,
+  DataSyncService
 };

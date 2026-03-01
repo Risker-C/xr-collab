@@ -45,9 +45,17 @@ async function handleFileSelect(event) {
         formData.append('uploaderId', currentUserId || 'unknown');
         formData.append('uploaderName', username);
 
+        const csrfToken = window.getCsrfToken ? await window.getCsrfToken() : null;
+        const headers = {};
+        if (csrfToken) {
+            headers['X-CSRF-Token'] = csrfToken;
+        }
+
         // Upload to backend
         const response = await fetch('/api/files/upload', {
             method: 'POST',
+            headers,
+            credentials: 'include',
             body: formData
         });
 

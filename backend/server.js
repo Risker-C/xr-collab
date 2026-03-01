@@ -705,9 +705,11 @@ app.post("/api/files/upload", (req, res) => {
     try {
       sanitizeMiddleware(req, res, () => {});
 
-      const derivedUploaderId = req.user?.userId
-        || req.body.uploaderId
-        || (crypto.randomUUID ? crypto.randomUUID() : `user_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`);
+      const candidateUploaderId = req.user?.userId || req.body.uploaderId;
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+      const derivedUploaderId = uuidRegex.test(String(candidateUploaderId || ''))
+        ? String(candidateUploaderId)
+        : (crypto.randomUUID ? crypto.randomUUID() : `user_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`);
       const derivedUploaderName = req.user?.username || req.body.uploaderName || "用户";
 
       const parsed = fileUploadSchema.safeParse({
@@ -777,7 +779,8 @@ app.post("/api/files/upload", (req, res) => {
         // ignore
       }
 
-      res.status(500).json({ error: uploadError.message || "文件上传失败" });
+      const statusCode = uploadError.message === 'Invalid upload metadata' ? 400 : 500;
+      res.status(statusCode).json({ error: uploadError.message || "文件上传失败" });
     }
   });
 });

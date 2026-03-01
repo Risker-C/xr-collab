@@ -246,8 +246,16 @@ export class MLSharpUI {
       const formData = new FormData();
       formData.append('image', this.selectedFile);
 
+      const csrfToken = window.getCsrfToken ? await window.getCsrfToken() : null;
+      const headers = {};
+      if (csrfToken) {
+        headers['X-CSRF-Token'] = csrfToken;
+      }
+
       const response = await fetch('/api/ml-sharp/generate', {
         method: 'POST',
+        headers,
+        credentials: 'include',
         body: formData
       });
 
