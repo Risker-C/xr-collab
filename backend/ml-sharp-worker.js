@@ -1,39 +1,40 @@
 /**
- * ML_Sharp Worker Bridge (Real Implementation)
- * 真实的ML_Sharp API集成
- * 
- * 使用Hugging Face Spaces的TripoSR作为免费替代方案
+ * ML_Sharp Worker Bridge (Gradio Client Implementation)
+ * 使用正确的Gradio客户端调用TripoSR
  */
 
 const axios = require('axios')
 const FormData = require('form-data')
+const { Client } = require('@gradio/client')
 
 class MLSharpWorker {
   constructor() {
-    // 使用Hugging Face Inference API（更稳定）
-    this.useInferenceAPI = process.env.HF_API_KEY ? true : false
-    this.inferenceEndpoint = 'https://api-inference.huggingface.co/models/stabilityai/TripoSR'
-    
-    // Spaces端点（备用）
-    this.spacesEndpoints = [
-      'https://stabilityai-triposr.hf.space/api/predict',
-      'https://huggingface.co/spaces/stabilityai/TripoSR/api/predict'
-    ]
-    
-    this.currentEndpoint = 0
-    this.timeout = 60000 // 1分钟超时
+    // 使用Gradio客户端调用TripoSR Spaces
+    this.spacesUrl = 'https://stabilityai-triposr.hf.space'
+    this.timeout = 120000 // 2分钟超时
     this.maxRetries = 3
-  }
-
-  get apiEndpoint() {
-    if (this.useInferenceAPI) {
-      return this.inferenceEndpoint
-    }
-    return this.spacesEndpoints[this.currentEndpoint]
+    this.client = null
   }
 
   /**
-   * 单图转3D生成（真实实现）
+   * 初始化Gradio客户端
+   */
+  async initClient() {
+    if (!this.client) {
+      try {
+        console.log('🔌 连接到TripoSR Spaces...')
+        this.client = await Client.connect(this.spacesUrl)
+        console.log('✅ TripoSR客户端连接成功')
+      } catch (error) {
+        console.warn('⚠️ TripoSR客户端连接失败:', error.message)
+        this.client = null
+      }
+    }
+    return this.client
+  }
+
+  /**
+   * 单图转3D生成（Gradio客户端实现）
    */
   async generate(imageBuffer, filename) {
     let attempt = 0
@@ -44,121 +45,76 @@ class MLSharpWorker {
         
         const startTime = Date.now()
         
-        // 创建FormData
-        const formData = new FormData()
-        formData.append('image', imageBuffer, {
-          filename: filename || 'image.jpg',
-          contentType: 'image/jpeg'
-        })
-        formData.append('mc_resolution', '256')
-        formData.append('formats', 'glb')
-
-        // 调用Hugging Face API
-        let response
-        if (this.useInferenceAPI) {
-          // 使用Inference API
-          response = await axios.post(
-            this.apiEndpoint,
-            imageBuffer,
-            {
-              timeout: this.timeout,
-              headers: {
-                'Authorization': `Bearer ${process.env.HF_API_KEY}`,
-                'Content-Type': 'image/jpeg',
-                'User-Agent': 'xr-collab-real/1.0'
-              },
-              responseType: 'arraybuffer'
-            }
-          )
-        } else {
-          // 使用Spaces API
-          response = await axios.post(
-            this.apiEndpoint,
-            formData,
-            {
-              timeout: this.timeout,
-              headers: {
-                ...formData.getHeaders(),
-                'User-Agent': 'xr-collab-real/1.0'
-              },
-              responseType: 'json'
-            }
-          )
-        }
-
-        const processingTime = Date.now() - startTime
-
-        // 解析响应
-        let modelData, modelUrl
+        // 初始化Gradio客户端
+        const client = await this.initClient()
         
-        if (this.useInferenceAPI) {
-          // Inference API返回二进制数据
-          if (response.data && response.data.byteLength > 0) {
-            // 创建临时URL（实际应该上传到R2）
-            modelUrl = `data:model/gltf-binary;base64,${Buffer.from(response.data).toString('base64')}`
-            modelData = response.data
-          } else {
-            throw new Error('Inference API返回空数据')
-          }
-        } else {
-          // Spaces API返回JSON
-          if (response.data && response.data.data && response.data.data[0]) {
-            modelData = response.data.data[0]
-            modelUrl = modelData
+        if (client) {
+          // 使用Gradio客户端调用TripoSR
+          console.log('🎯 使用Gradio客户端调用TripoSR...')
+          
+          // 将图片转换为Blob
+          const imageBlob = new Blob([imageBuffer], { type: 'image/jpeg' })
+          
+          // 调用TripoSR的predict方法
+          const result = await client.predict("/image_to_3d", {
+            image: imageBlob,
+            mc_resolution: 256,
+            formats: ["glb"]
+          })
+          
+          const processingTime = Date.now() - startTime
+          
+          if (result && result.data && result.data[0]) {
+            const modelData = result.data[0]
+            let modelUrl = modelData
+            
+            // 如果返回的是相对路径，构建完整URL
             if (typeof modelData === 'string' && !modelData.startsWith('http')) {
-              modelUrl = `${this.apiEndpoint.replace('/api/predict', '')}/file=${modelData}`
+              modelUrl = `${this.spacesUrl}/file=${modelData}`
             }
+            
+            // 获取模型文件大小
+            let modelSize = 0
+            try {
+              const modelResponse = await axios.head(modelUrl, { timeout: 10000 })
+              modelSize = parseInt(modelResponse.headers['content-length'] || '0')
+            } catch (e) {
+              console.warn('无法获取模型文件大小:', e.message)
+            }
+            
+            // 分析图片内容
+            const roomType = await this.analyzeImageContent(imageBuffer)
+            
+            const finalResult = {
+              modelUrl,
+              metadata: {
+                roomType,
+                confidence: 0.85,
+                processingTime,
+                modelSize,
+                vertices: 10000,
+                faces: 20000,
+                format: 'glb',
+                source: 'triposr-gradio'
+              }
+            }
+            
+            console.log(`✅ ML_Sharp生成成功: ${processingTime}ms, 大小: ${modelSize}字节`)
+            return finalResult
           } else {
-            throw new Error('Spaces API返回格式异常')
-          }
-        }
-
-        // 下载模型文件获取实际大小
-        let modelSize = 0
-        if (!this.useInferenceAPI) {
-          try {
-            const modelResponse = await axios.head(modelUrl, { timeout: 10000 })
-            modelSize = parseInt(modelResponse.headers['content-length'] || '0')
-          } catch (e) {
-            console.warn('无法获取模型文件大小:', e.message)
+            throw new Error('TripoSR返回格式异常')
           }
         } else {
-          modelSize = modelData.byteLength
+          throw new Error('Gradio客户端连接失败')
         }
-
-        // 分析图片内容
-        const roomType = await this.analyzeImageContent(imageBuffer)
-
-        const result = {
-          modelUrl,
-          metadata: {
-            roomType,
-            confidence: 0.85,
-            processingTime,
-            modelSize,
-            vertices: 10000,
-            faces: 20000,
-            format: 'glb',
-            source: this.useInferenceAPI ? 'hf-inference' : 'hf-spaces'
-          }
-        }
-
-        console.log(`ML_Sharp生成成功: ${processingTime}ms, 大小: ${modelSize}字节`)
-        return result
 
       } catch (error) {
         attempt++
         console.error(`ML_Sharp生成失败 (尝试 ${attempt}):`, error.message)
 
-        // 尝试切换到备用端点（仅对Spaces API）
-        if (!this.useInferenceAPI && (error.response?.status >= 500 || error.code === 'ECONNABORTED')) {
-          this.currentEndpoint = (this.currentEndpoint + 1) % this.spacesEndpoints.length
-          console.log(`切换到备用端点: ${this.apiEndpoint}`)
-        }
-
         if (attempt >= this.maxRetries) {
-          console.warn('所有Hugging Face端点都失败，使用本地降级方案');
-          return this.generateFallbackModel(imageBuffer, filename);
+          console.warn('所有TripoSR尝试都失败，使用本地降级方案')
+          return this.generateFallbackModel(imageBuffer, filename)
         }
 
         // 重试前等待
@@ -367,18 +323,20 @@ class MLSharpWorker {
    */
   getServiceInfo() {
     return {
-      name: 'ML_Sharp (TripoSR)',
-      version: '1.0.0',
+      name: 'ML_Sharp (TripoSR Gradio)',
+      version: '2.0.0',
       provider: 'Hugging Face Spaces',
-      endpoint: this.apiEndpoint,
+      endpoint: this.spacesUrl,
+      clientType: 'gradio',
       supportedFormats: ['image/jpeg', 'image/png', 'image/webp'],
       maxFileSize: '10MB',
       timeout: this.timeout,
       features: [
-        '单图转3D',
+        '单图转3D (Gradio)',
         '环境分析',
         '拍摄建议',
-        '批量处理'
+        '批量处理',
+        '本地降级'
       ]
     }
   }
