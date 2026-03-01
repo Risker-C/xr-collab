@@ -110,6 +110,7 @@ class MLSharpWorker {
             }
           } else {
             throw new Error('Spaces API返回格式异常')
+          }
         }
 
         // 下载模型文件获取实际大小
