@@ -10,10 +10,19 @@ const FormData = require('form-data')
 
 class MLSharpWorker {
   constructor() {
-    // 使用Hugging Face Spaces的TripoSR
-    this.apiEndpoint = 'https://stabilityai-triposr.hf.space'
-    this.timeout = 120000 // 2分钟超时
-    this.maxRetries = 2
+    // 使用多个Hugging Face端点提高可用性
+    this.endpoints = [
+      'https://stabilityai-triposr.hf.space',
+      'https://tripo3d-triposr.hf.space',
+      'https://huggingface.co/spaces/stabilityai/TripoSR'
+    ]
+    this.currentEndpoint = 0
+    this.timeout = 60000 // 1分钟超时
+    this.maxRetries = 3
+  }
+
+  get apiEndpoint() {
+    return this.endpoints[this.currentEndpoint]
   }
 
   /**
@@ -100,6 +109,12 @@ class MLSharpWorker {
         attempt++
         console.error(`ML_Sharp生成失败 (尝试 ${attempt}):`, error.message)
 
+        // 尝试切换到备用端点
+        if (error.response?.status >= 500 || error.code === 'ECONNABORTED') {
+          this.currentEndpoint = (this.currentEndpoint + 1) % this.endpoints.length
+          console.log(`切换到备用端点: ${this.apiEndpoint}`)
+        }
+
         if (attempt >= this.maxRetries) {
           if (axios.isAxiosError(error)) {
             if (error.code === 'ECONNABORTED') {
@@ -107,14 +122,14 @@ class MLSharpWorker {
             } else if (error.response?.status === 429) {
               throw new Error('服务繁忙，请稍后重试')
             } else if (error.response?.status >= 500) {
-              throw new Error('服务暂时不可用，请稍后重试')
+              throw new Error('Hugging Face服务暂时不可用，请稍后重试（已尝试所有备用端点）')
             }
           }
           throw new Error(`生成失败: ${error.message}`)
         }
 
         // 重试前等待
-        await new Promise(resolve => setTimeout(resolve, 2000 * attempt))
+        await new Promise(resolve => setTimeout(resolve, 3000 * attempt))
       }
     }
   }
