@@ -16,7 +16,7 @@ class MLSharpWorker {
       'https://huggingface.co/spaces/gagndeep/Apple-Sharp-Image-to-3D-View-Synthesis'
     ]
     this.currentSpaceIndex = 0
-    this.timeout = 60000 // 1分钟超时（Apple Sharp <1秒生成）
+    this.timeout = 180000 // 3分钟超时（考虑ZeroGPU排队时间）
     this.maxRetries = 3
     this.client = null
   }
@@ -133,22 +133,31 @@ class MLSharpWorker {
 
       } catch (error) {
         attempt++
-        console.error(`Apple Sharp生成失败 (尝试 ${attempt}):`, error.message)
+        console.error(`❌ Apple Sharp生成失败 (尝试 ${attempt}/${this.maxRetries}):`)
+        console.error(`   错误类型: ${error.constructor.name}`)
+        console.error(`   错误消息: ${error.message}`)
+        console.error(`   当前Spaces: ${this.currentSpacesUrl}`)
+        if (error.stack) {
+          console.error(`   错误堆栈: ${error.stack.split('\n')[0]}`)
+        }
 
         // 尝试切换到备用Spaces
         if (error.message.includes('connect') || error.message.includes('timeout')) {
           this.currentSpaceIndex = (this.currentSpaceIndex + 1) % this.sharpSpaces.length
           this.client = null // 重置客户端以使用新的Spaces
-          console.log(`切换到备用Spaces: ${this.currentSpacesUrl}`)
+          console.log(`🔄 切换到备用Spaces: ${this.currentSpacesUrl}`)
         }
 
         if (attempt >= this.maxRetries) {
-          console.warn('所有Apple Sharp尝试都失败，使用本地降级方案')
+          console.warn('⚠️ 所有Apple Sharp尝试都失败，使用本地降级方案')
+          console.warn(`   最终错误: ${error.message}`)
           return this.generateFallbackModel(imageBuffer, filename)
         }
 
         // 重试前等待
-        await new Promise(resolve => setTimeout(resolve, 2000 * attempt))
+        const waitTime = 2000 * attempt
+        console.log(`⏳ 等待 ${waitTime}ms 后重试...`)
+        await new Promise(resolve => setTimeout(resolve, waitTime))
       }
     }
   }
