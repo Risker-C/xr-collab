@@ -1,11 +1,11 @@
 {
-  "name": "xr-collab-backend",
+  "name": "xr-collab",
   "version": "1.1.0",
-  "description": "XR Collab Backend Service",
-  "main": "backend/server.js",
+  "description": "XR Collab - WebXR协作平台",
   "scripts": {
-    "start": "node backend/server.js",
-    "install": "cd backend && npm install"
+    "build": "cd frontend && npm ci && npm run build",
+    "dev": "cd frontend && npm run dev",
+    "start": "cd frontend && npm start"
   },
   "engines": {
     "node": ">=18.0.0"
