@@ -1,5 +1,4 @@
 const crypto = require("crypto");
-const { getInstance: getStorageAdapter } = require("./storage/storage-adapter");
 
 const ROOM_ID_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const ROOM_ID_LENGTH = 6;
@@ -15,9 +14,8 @@ function getObjectId(object) {
 
 class RoomManager {
   constructor(redis) {
-    this.rooms = new Map(); // 内存缓存
-    this.storage = getStorageAdapter(); // 使用新的storage adapter
-    this.redis = redis; // 保留向后兼容性
+    this.rooms = new Map();
+    this.redis = redis;
   }
 
   normalizeRoomId(roomId) {
@@ -96,18 +94,8 @@ class RoomManager {
   }
 
   async persistRoom(room) {
-    if (!room.persistent) return;
-    
-    // 使用新的storage adapter
-    try {
-      await this.storage.setRoom(room.id, this.serializeRoom(room));
-    } catch (error) {
-      console.error('Failed to persist room:', error);
-      // 降级到旧的redis（如果存在）
-      if (this.redis) {
-        await this.redis.set(`room:${room.id}`, JSON.stringify(this.serializeRoom(room)));
-      }
-    }
+    if (!this.redis || !room.persistent) return;
+    await this.redis.set(`room:${room.id}`, JSON.stringify(this.serializeRoom(room)));
   }
 
   normalizeObjectPayload(object = {}, actorId = null) {
@@ -176,35 +164,19 @@ class RoomManager {
     const normalizedRoomId = this.normalizeRoomId(roomId);
     if (!normalizedRoomId) return null;
 
-    // 先从内存缓存获取
     if (this.rooms.has(normalizedRoomId)) {
       return this.rooms.get(normalizedRoomId);
     }
 
-    // 从storage adapter获取
-    try {
-      const data = await this.storage.getRoom(normalizedRoomId);
-      if (data) {
-        const room = this.hydrateRoom(data);
-        this.rooms.set(normalizedRoomId, room);
-        return room;
-      }
-    } catch (error) {
-      console.error('Failed to get room from storage:', error);
-    }
+    if (!this.redis) return null;
 
-    // 降级到旧的redis（如果存在）
-    if (this.redis) {
-      const data = await this.redis.get(`room:${normalizedRoomId}`);
-      if (data) {
-        const parsed = JSON.parse(data);
-        const room = this.hydrateRoom(parsed);
-        this.rooms.set(normalizedRoomId, room);
-        return room;
-      }
-    }
+    const data = await this.redis.get(`room:${normalizedRoomId}`);
+    if (!data) return null;
 
-    return null;
+    const parsed = JSON.parse(data);
+    const room = this.hydrateRoom(parsed);
+    this.rooms.set(normalizedRoomId, room);
+    return room;
   }
 
   async joinRoom(roomId, userId, userData = {}, password = "") {

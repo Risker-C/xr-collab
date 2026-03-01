@@ -6,6 +6,10 @@ const path = require("path");
 const socketIO = require("socket.io");
 const cors = require("cors");
 const jwt = require("jsonwebtoken");
+
+// Load environment variables
+require('dotenv').config({ path: '.env.credentials' });
+
 const { generateToken, requireHttpAuth } = require("./auth");
 const { asyncHandler, notFoundHandler, errorHandler } = require("./middleware");
 const RoomManager = require("./rooms");
@@ -18,6 +22,10 @@ const {
   OperationLogManager,
   deepClone
 } = require("./undo-redo");
+
+// Initialize storage adapter
+const { getInstance: getStorageAdapter } = require("./storage/storage-adapter");
+const storage = getStorageAdapter();
 
 const app = express();
 const server = http.createServer(app);
@@ -2003,11 +2011,29 @@ app.use(notFoundHandler);
 app.use(errorHandler);
 
 const PORT = process.env.PORT || 3001;
-server.listen(PORT, () => {
-  console.log(`🚀 XR Collab server running on port ${PORT}`);
-});
 
-process.on("SIGTERM", () => {
+// Initialize and start server
+async function startServer() {
+  try {
+    // Initialize storage adapter
+    console.log('Initializing storage...');
+    await storage.initialize();
+    
+    // Start server
+    server.listen(PORT, () => {
+      console.log(`🚀 XR Collab server running on port ${PORT}`);
+    });
+  } catch (error) {
+    console.error('Failed to start server:', error);
+    process.exit(1);
+  }
+}
+
+startServer();
+
+process.on("SIGTERM", async () => {
+  console.log('Shutting down gracefully...');
+  await storage.shutdown();
   workerBridge.stop();
   server.close();
 });
