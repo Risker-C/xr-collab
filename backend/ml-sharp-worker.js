@@ -67,10 +67,11 @@ class MLSharpWorker {
           const imageBlob = new Blob([imageBuffer], { type: 'image/jpeg' })
           
           // 调用Hunyuan3D-2的predict方法
-          const result = await client.predict("/image_to_3d", {
+          const result = await client.predict("/generate", {
             image: imageBlob,
+            texture: true,
             seed: 0,
-            steps: 50
+            type: "glb"
           })
           
           const processingTime = Date.now() - startTime
