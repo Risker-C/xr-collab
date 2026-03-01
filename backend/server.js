@@ -526,6 +526,23 @@ app.get("/health", (req, res) => {
   res.json({ status: "ok" });
 });
 
+// API status endpoint for frontend
+app.get("/api/status", (req, res) => {
+  res.json({
+    backend: true,
+    database: true, // TODO: Add real database check
+    ai_services: {
+      ml_sharp: true,
+      zhitianxia: true,
+      kiri: true
+    },
+    uptime: process.uptime() > 3600 
+      ? `${Math.floor(process.uptime() / 3600)}h ${Math.floor((process.uptime() % 3600) / 60)}m`
+      : `${Math.floor(process.uptime() / 60)}m`,
+    version: "v1.1.0"
+  });
+});
+
 // ML_Sharp API routes (V0.3) - 已在顶部声明
 app.use("/api/ml-sharp", mlSharpRoutes);
 
