@@ -64,13 +64,13 @@ class MLSharpWorker {
           // 使用Apple Sharp Spaces生成
           console.log('🎯 使用Apple Sharp ZeroGPU生成3D高斯表示...')
           
-          // 将图片转换为Blob
-          const imageBlob = new Blob([imageBuffer], { type: 'image/jpeg' })
+          // Node.js环境使用Buffer，不使用Blob
+          // @gradio/client会自动处理Buffer
           
           // 调用Apple Sharp的/run_sharp API
           // 参数：image_path, trajectory_type, output_long_side, num_frames, fps, render_video
           const result = await client.predict(
-            imageBlob,  // image_path
+            imageBuffer,  // image_path - 直接传Buffer
             "rotate_forward",  // trajectory_type
             "0",  // output_long_side (0=原始分辨率)
             60,  // num_frames
