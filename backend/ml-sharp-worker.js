@@ -1,53 +1,52 @@
 /**
- * ML_Sharp Worker Bridge (Apple ML-Sharp Implementation)
- * 使用Apple官方的ML-Sharp: Sharp Monocular View Synthesis
- * GitHub: https://github.com/apple/ml-sharp
+ * ML_Sharp Worker Bridge (Apple Sharp HF Spaces Implementation)
+ * 使用现成的Apple Sharp HuggingFace Spaces
+ * Spaces: gagndeep/Apple-Sharp-Image-to-3D-View-Synthesis
  */
 
-const { exec } = require('child_process')
-const fs = require('fs')
-const path = require('path')
+const axios = require('axios')
+const FormData = require('form-data')
+const { Client } = require('@gradio/client')
 
 class MLSharpWorker {
   constructor() {
-    // Apple ML-Sharp配置
-    this.sharpCommand = 'sharp'
-    this.tempDir = '/tmp/ml-sharp'
-    this.timeout = 30000 // 30秒超时（Apple ML-Sharp <1秒生成）
+    // 使用现成的Apple Sharp Spaces
+    this.sharpSpaces = [
+      'https://gagndeep-apple-sharp-image-to-3d-view-synthesis.hf.space',
+      'https://huggingface.co/spaces/gagndeep/Apple-Sharp-Image-to-3D-View-Synthesis'
+    ]
+    this.currentSpaceIndex = 0
+    this.timeout = 60000 // 1分钟超时（Apple Sharp <1秒生成）
     this.maxRetries = 3
-    
-    // 确保临时目录存在
-    this.ensureTempDir()
+    this.client = null
   }
 
   /**
-   * 确保临时目录存在
+   * 获取当前Spaces URL
    */
-  ensureTempDir() {
-    if (!fs.existsSync(this.tempDir)) {
-      fs.mkdirSync(this.tempDir, { recursive: true })
+  get currentSpacesUrl() {
+    return this.sharpSpaces[this.currentSpaceIndex]
+  }
+
+  /**
+   * 初始化Apple Sharp客户端
+   */
+  async initSharpClient() {
+    if (!this.client) {
+      try {
+        console.log(`🔌 连接到Apple Sharp Spaces: ${this.currentSpacesUrl}`)
+        this.client = await Client.connect(this.currentSpacesUrl)
+        console.log('✅ Apple Sharp客户端连接成功')
+      } catch (error) {
+        console.warn('⚠️ Apple Sharp客户端连接失败:', error.message)
+        this.client = null
+      }
     }
+    return this.client
   }
 
   /**
-   * 检查Apple ML-Sharp是否已安装
-   */
-  async checkInstallation() {
-    return new Promise((resolve) => {
-      exec(`${this.sharpCommand} --help`, (error) => {
-        if (error) {
-          console.warn('⚠️ Apple ML-Sharp未安装，将使用降级方案')
-          resolve(false)
-        } else {
-          console.log('✅ Apple ML-Sharp已安装')
-          resolve(true)
-        }
-      })
-    })
-  }
-
-  /**
-   * 单图转3D生成（Apple ML-Sharp实现）
+   * 单图转3D生成（Apple Sharp Spaces实现）
    */
   async generate(imageBuffer, filename) {
     let attempt = 0
@@ -58,62 +57,86 @@ class MLSharpWorker {
         
         const startTime = Date.now()
         
-        // 检查Apple ML-Sharp安装
-        const isInstalled = await this.checkInstallation()
+        // 初始化Apple Sharp客户端
+        const client = await this.initSharpClient()
         
-        if (isInstalled) {
-          // 使用Apple ML-Sharp生成
-          console.log('🎯 使用Apple ML-Sharp生成3D高斯表示...')
+        if (client) {
+          // 使用Apple Sharp Spaces生成
+          console.log('🎯 使用Apple Sharp ZeroGPU生成3D高斯表示...')
           
-          // 保存输入图片到临时目录
-          const inputDir = path.join(this.tempDir, `input_${Date.now()}`)
-          const outputDir = path.join(this.tempDir, `output_${Date.now()}`)
-          fs.mkdirSync(inputDir, { recursive: true })
-          fs.mkdirSync(outputDir, { recursive: true })
+          // 将图片转换为Blob
+          const imageBlob = new Blob([imageBuffer], { type: 'image/jpeg' })
           
-          const inputPath = path.join(inputDir, filename || 'input.jpg')
-          fs.writeFileSync(inputPath, imageBuffer)
-          
-          // 调用Apple ML-Sharp
-          const result = await this.runSharp(inputDir, outputDir)
+          // 调用Apple Sharp的predict方法
+          const result = await client.predict(imageBlob, {
+            api_name: "/predict"
+          })
           
           const processingTime = Date.now() - startTime
           
-          if (result.success) {
-            // 分析图片内容
-            const roomType = await this.analyzeImageContent(imageBuffer)
+          if (result && result.data && result.data.length > 0) {
+            // Apple Sharp返回3D Gaussian Splats (.ply文件)
+            let modelUrl = result.data[0]
             
-            const finalResult = {
-              modelUrl: result.plyPath,
-              metadata: {
-                roomType,
-                confidence: 0.98,
-                processingTime,
-                modelSize: result.fileSize,
-                vertices: 1000000, // 3D Gaussian Splats估计
-                faces: 0, // Gaussian Splats不是传统网格
-                format: 'ply',
-                source: 'apple-ml-sharp',
-                provider: 'apple-research'
+            // 如果是相对路径，构建完整URL
+            if (typeof modelUrl === 'string') {
+              if (!modelUrl.startsWith('http')) {
+                modelUrl = `${this.currentSpacesUrl}/file=${modelUrl}`
               }
+              
+              // 获取模型文件大小
+              let modelSize = 0
+              try {
+                const modelResponse = await axios.head(modelUrl, { timeout: 10000 })
+                modelSize = parseInt(modelResponse.headers['content-length'] || '0')
+              } catch (e) {
+                console.warn('无法获取模型文件大小:', e.message)
+                modelSize = 2000000 // 估计2MB
+              }
+              
+              // 分析图片内容
+              const roomType = await this.analyzeImageContent(imageBuffer)
+              
+              const finalResult = {
+                modelUrl,
+                metadata: {
+                  roomType,
+                  confidence: 0.98,
+                  processingTime,
+                  modelSize,
+                  vertices: 1000000, // 3D Gaussian Splats估计
+                  faces: 0, // Gaussian Splats不是传统网格
+                  format: 'ply',
+                  source: 'apple-sharp-spaces',
+                  provider: 'huggingface-zerogpu'
+                }
+              }
+              
+              console.log(`✅ Apple Sharp生成成功: ${processingTime}ms, 大小: ${modelSize}字节`)
+              return finalResult
+            } else {
+              throw new Error('Apple Sharp返回格式异常')
             }
-            
-            console.log(`✅ Apple ML-Sharp生成成功: ${processingTime}ms`)
-            return finalResult
           } else {
-            throw new Error('Apple ML-Sharp生成失败')
+            throw new Error('Apple Sharp返回空数据')
           }
         } else {
-          console.warn('Apple ML-Sharp未安装，使用降级方案')
-          return this.generateFallbackModel(imageBuffer, filename)
+          throw new Error('Apple Sharp客户端连接失败')
         }
 
       } catch (error) {
         attempt++
-        console.error(`Apple ML-Sharp生成失败 (尝试 ${attempt}):`, error.message)
+        console.error(`Apple Sharp生成失败 (尝试 ${attempt}):`, error.message)
+
+        // 尝试切换到备用Spaces
+        if (error.message.includes('connect') || error.message.includes('timeout')) {
+          this.currentSpaceIndex = (this.currentSpaceIndex + 1) % this.sharpSpaces.length
+          this.client = null // 重置客户端以使用新的Spaces
+          console.log(`切换到备用Spaces: ${this.currentSpacesUrl}`)
+        }
 
         if (attempt >= this.maxRetries) {
-          console.warn('所有Apple ML-Sharp尝试都失败，使用本地降级方案')
+          console.warn('所有Apple Sharp尝试都失败，使用本地降级方案')
           return this.generateFallbackModel(imageBuffer, filename)
         }
 
@@ -121,40 +144,6 @@ class MLSharpWorker {
         await new Promise(resolve => setTimeout(resolve, 2000 * attempt))
       }
     }
-  }
-
-  /**
-   * 运行Apple ML-Sharp命令
-   */
-  async runSharp(inputDir, outputDir) {
-    return new Promise((resolve, reject) => {
-      const command = `${this.sharpCommand} predict -i ${inputDir} -o ${outputDir}`
-      
-      exec(command, { timeout: this.timeout }, (error, stdout, stderr) => {
-        if (error) {
-          console.error('Apple ML-Sharp执行错误:', stderr)
-          resolve({ success: false, error: stderr })
-          return
-        }
-        
-        // 查找生成的.ply文件
-        const files = fs.readdirSync(outputDir)
-        const plyFile = files.find(f => f.endsWith('.ply'))
-        
-        if (plyFile) {
-          const plyPath = path.join(outputDir, plyFile)
-          const stats = fs.statSync(plyPath)
-          
-          resolve({
-            success: true,
-            plyPath,
-            fileSize: stats.size
-          })
-        } else {
-          resolve({ success: false, error: 'No .ply file generated' })
-        }
-      })
-    })
   }
 
   /**
@@ -357,34 +346,37 @@ class MLSharpWorker {
    */
   getServiceInfo() {
     return {
-      name: 'ML_Sharp (Apple Research)',
-      version: '1.0.0',
-      provider: 'Apple',
-      repository: 'https://github.com/apple/ml-sharp',
-      paper: 'https://arxiv.org/abs/2512.10685',
-      cost: 'FREE (Open Source)',
+      name: 'ML_Sharp (Apple Sharp Spaces)',
+      version: '2.0.0',
+      provider: 'Apple + HuggingFace ZeroGPU',
+      spaces: this.currentSpacesUrl,
+      author: 'gagndeep',
+      likes: '78+',
+      cost: 'FREE (ZeroGPU)',
       supportedFormats: ['image/jpeg', 'image/png', 'image/webp'],
       maxFileSize: '10MB',
       timeout: this.timeout,
       features: [
         '超快速生成 (<1秒)',
         '3D Gaussian Splats输出',
-        '实时渲染支持',
-        '度量精确',
-        'SOTA性能',
-        '零样本泛化'
+        'ZeroGPU H200支持',
+        '78+用户验证',
+        '现成可用',
+        '无需安装'
       ],
       advantages: [
         '🚀 <1秒生成速度',
-        '🏢 Apple官方研究',
+        '🍎 Apple官方技术',
         '🎯 SOTA质量',
         '💎 3D Gaussian Splats',
-        '🆓 完全开源免费'
+        '🆓 完全免费',
+        '⚡ ZeroGPU加速'
       ],
-      requirements: {
-        python: '3.13',
-        gpu: 'CUDA (推荐)',
-        installation: 'pip install -r requirements.txt'
+      technical: {
+        gpu: 'H200 (70GB+ VRAM)',
+        framework: 'ZeroGPU',
+        gradio: 'v4.x',
+        compatibility: 'Fixed for ZeroGPU'
       }
     }
   }
