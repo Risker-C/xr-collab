@@ -1,2 +1,4 @@
-version: 2
-outputDirectory: frontend/out
+{
+  "version": 2,
+  "outputDirectory": "frontend/out"
+}
