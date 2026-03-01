@@ -1,8 +1,10 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
+import { io, Socket } from 'socket.io-client'
 import { BACKEND_URL } from '@/lib/config'
+import { LoadingSpinner } from '@/components/Loading'
 
 interface SystemStatus {
   backend: boolean
@@ -19,6 +21,45 @@ interface SystemStatus {
 export default function HomePage() {
   const [systemStatus, setSystemStatus] = useState<SystemStatus | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [connectionStatus, setConnectionStatus] = useState<'connected' | 'connecting' | 'error'>('connecting')
+  const [errorMessage, setErrorMessage] = useState('')
+  const socketRef = useRef<Socket | null>(null)
+
+  const reconnect = () => {
+    setErrorMessage('')
+    setConnectionStatus('connecting')
+    socketRef.current?.connect()
+  }
+
+  useEffect(() => {
+    const socket: Socket = io(BACKEND_URL, {
+      transports: ['polling', 'websocket'],
+      reconnection: true,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000
+    })
+
+    socketRef.current = socket
+
+    socket.on('connect', () => {
+      setConnectionStatus('connected')
+      setErrorMessage('')
+    })
+
+    socket.on('connect_error', () => {
+      setConnectionStatus('error')
+      setErrorMessage('无法连接到服务器，请检查网络连接')
+    })
+
+    socket.on('disconnect', () => {
+      setConnectionStatus('connecting')
+    })
+
+    return () => {
+      socket.off()
+      socket.disconnect()
+    }
+  }, [])
 
   useEffect(() => {
     const checkSystemStatus = async () => {
@@ -88,6 +129,23 @@ export default function HomePage() {
 
   return (
     <div className="container mx-auto px-4 py-16">
+      {connectionStatus === 'error' && (
+        <div
+          className="fixed top-4 right-4 bg-red-500 text-white p-4 rounded-lg shadow-lg z-50"
+          role="alert"
+          aria-live="assertive"
+        >
+          <p className="font-bold">连接失败</p>
+          <p className="text-sm">{errorMessage}</p>
+          <button
+            onClick={reconnect}
+            className="mt-2 underline"
+            aria-label="重新连接服务器"
+          >
+            重新连接
+          </button>
+        </div>
+      )}
       {/* 主标题 */}
       <div className="text-center mb-16">
         <h1 className="text-6xl font-bold text-white mb-6">
@@ -112,7 +170,12 @@ export default function HomePage() {
       {/* 功能卡片 */}
       <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto mb-16">
         {features.map((feature) => (
-          <Link key={feature.href} href={feature.href} className="group">
+          <Link
+            key={feature.href}
+            href={feature.href}
+            className="group"
+            aria-label={`进入${feature.title}`}
+          >
             <div className={`bg-gradient-to-br ${feature.gradient} p-8 rounded-2xl border border-white/10 hover:border-white/20 transition-all duration-300 group-hover:scale-105 relative overflow-hidden`}>
               {/* 状态指示器 */}
               <div className="absolute top-4 right-4">
@@ -145,10 +208,7 @@ export default function HomePage() {
           <h3 className="text-xl font-bold text-white mb-4">系统状态</h3>
           
           {isLoading ? (
-            <div className="flex items-center justify-center py-8">
-              <div className="animate-spin text-2xl">⚙️</div>
-              <span className="ml-2 text-gray-400">检查系统状态...</span>
-            </div>
+            <LoadingSpinner message="检查系统状态..." />
           ) : systemStatus ? (
             <div className="grid md:grid-cols-2 gap-6">
               {/* 核心服务 */}
@@ -210,18 +270,21 @@ export default function HomePage() {
         <div className="flex flex-col sm:flex-row gap-4 justify-center">
           <Link
             href="/vr"
+            aria-label="进入VR协作"
             className="px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
           >
             进入VR协作
           </Link>
           <Link
             href="/scan"
+            aria-label="开始3D扫描"
             className="px-8 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors"
           >
             开始3D扫描
           </Link>
           <Link
             href="/about"
+            aria-label="了解更多"
             className="px-8 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-medium transition-colors"
           >
             了解更多

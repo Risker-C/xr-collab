@@ -53,6 +53,31 @@ Full-stack WebXR collaboration platform with multi-agent development, ready for 
 - Position and rotation synchronization
 - Object creation and manipulation
 
+## Controls
+
+### VR 控制
+- 🎮 使用VR控制器移动
+- 👆 点击抓取物体
+- 🔄 旋转控制器旋转物体
+- 📍 传送移动到远处
+
+### 桌面控制
+- WASD - 移动
+- 鼠标拖拽 - 旋转视角
+- 点击 - 选择物体
+- 滚轮 - 缩放
+
+### VR舒适性设置
+- 视野限制（减少晕动症）
+- 传送移动
+- 快速转向（30°）
+
+## Mobile Usage Guide
+- 使用右上角 ☰ 打开导航菜单
+- 单指拖拽旋转视角（触控支持需在具体场景接入）
+- 双指捏合缩放视角
+- 使用相册或相机上传图片进行扫描
+
 ## Quick Start
 
 ### Development (with Docker Compose)

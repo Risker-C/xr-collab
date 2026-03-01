@@ -17,6 +17,9 @@ export default function ScanPage() {
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([])
   const [scanProgress, setScanProgress] = useState<ScanProgress | null>(null)
   const [modelUrl, setModelUrl] = useState<string | null>(null)
+  const [uploadProgress, setUploadProgress] = useState(0)
+  const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'processing' | 'complete' | 'error'>('idle')
+  const [errorMessage, setErrorMessage] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const methods = [
@@ -74,32 +77,65 @@ export default function ScanPage() {
 
   const handleStartScan = async () => {
     if (uploadedFiles.length === 0) return
-    
+
     setIsScanning(true)
-    setScanProgress({ stage: '准备中', progress: 0, message: '正在上传图片...' })
+    setUploadStatus('uploading')
+    setUploadProgress(0)
+    setErrorMessage('')
+    setScanProgress({ stage: '上传中', progress: 0, message: '正在上传图片...' })
+
+    const formData = new FormData()
+    uploadedFiles.forEach(file => formData.append('images', file))
+    formData.append('method', selectedMethod)
 
     try {
-      const formData = new FormData()
-      uploadedFiles.forEach(file => formData.append('images', file))
-      formData.append('method', selectedMethod)
+      const result = await new Promise<{ modelUrl?: string }>((resolve, reject) => {
+        const xhr = new XMLHttpRequest()
 
-      const response = await fetch(`${BACKEND_URL}/api/${selectedMethod}/scan`, {
-        method: 'POST',
-        body: formData
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) {
+            const percent = (e.loaded / e.total) * 100
+            setUploadProgress(percent)
+          }
+        }
+
+        xhr.upload.onload = () => {
+          setUploadStatus('processing')
+          setScanProgress({ stage: '处理中', progress: 90, message: '图片上传完成，正在生成3D模型...' })
+        }
+
+        xhr.onload = () => {
+          if (xhr.status === 200) {
+            try {
+              const data = JSON.parse(xhr.responseText)
+              resolve(data)
+            } catch (parseError) {
+              reject(new Error('响应解析失败'))
+            }
+          } else {
+            reject(new Error(xhr.responseText || '扫描失败'))
+          }
+        }
+
+        xhr.onerror = () => {
+          reject(new Error('上传失败，请重试'))
+        }
+
+        xhr.open('POST', `${BACKEND_URL}/api/${selectedMethod}/scan`)
+        xhr.send(formData)
       })
 
-      if (!response.ok) throw new Error('扫描失败')
-
-      const result = await response.json()
-      
+      setUploadStatus('complete')
       setScanProgress({ stage: '完成', progress: 100, message: '3D模型已生成' })
-      setModelUrl(result.modelUrl)
-      
+      setModelUrl(result.modelUrl ?? null)
     } catch (error) {
+      const message = error instanceof Error ? error.message : '扫描失败，请重试'
       console.error('Scan error:', error)
-      setScanProgress({ stage: '失败', progress: 0, message: '扫描失败，请重试' })
+      setUploadStatus('error')
+      setErrorMessage(message)
+      setScanProgress({ stage: '失败', progress: 0, message })
     } finally {
-      setTimeout(() => setIsScanning(false), 1000)
+      setIsScanning(false)
     }
   }
 
@@ -107,6 +143,9 @@ export default function ScanPage() {
     setUploadedFiles([])
     setScanProgress(null)
     setModelUrl(null)
+    setUploadProgress(0)
+    setUploadStatus('idle')
+    setErrorMessage('')
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
@@ -128,6 +167,8 @@ export default function ScanPage() {
               setSelectedMethod(method.id)
               resetScan()
             }}
+            aria-label={`${method.name}扫描方案`}
+            aria-pressed={selectedMethod === method.id}
             disabled={isScanning}
             className={`text-left p-6 rounded-2xl border-2 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed ${
               selectedMethod === method.id
@@ -171,6 +212,8 @@ export default function ScanPage() {
                 </label>
                 <div 
                   className="border-2 border-dashed border-gray-700 rounded-lg p-8 text-center hover:border-gray-600 transition-colors cursor-pointer"
+                  role="button"
+                  aria-label="点击或拖拽上传图片"
                   onClick={() => fileInputRef.current?.click()}
                   onDrop={handleDrop}
                   onDragOver={(e) => e.preventDefault()}
@@ -180,6 +223,7 @@ export default function ScanPage() {
                     type="file"
                     accept={currentMethod.acceptedFormats}
                     multiple={currentMethod.maxFiles > 1}
+                    aria-label="选择要扫描的图片"
                     onChange={handleFileSelect}
                     className="hidden"
                   />
@@ -201,6 +245,7 @@ export default function ScanPage() {
                           e.stopPropagation()
                           resetScan()
                         }}
+                        aria-label="清除已选择图片"
                         className="mt-2 text-sm text-red-400 hover:text-red-300"
                       >
                         清除
@@ -210,8 +255,17 @@ export default function ScanPage() {
                 </div>
               </div>
 
+              {uploadStatus === 'uploading' && (
+                <div className="w-full bg-gray-700 rounded-full h-2">
+                  <div
+                    className="bg-blue-500 h-2 rounded-full transition-all"
+                    style={{ width: `${uploadProgress}%` }}
+                  />
+                </div>
+              )}
+
               {/* 进度条 */}
-              {scanProgress && (
+              {scanProgress && uploadStatus !== 'uploading' && (
                 <div className="bg-gray-800 p-4 rounded-lg">
                   <div className="flex justify-between text-sm text-gray-300 mb-2">
                     <span>{scanProgress.stage}</span>
@@ -227,9 +281,14 @@ export default function ScanPage() {
                 </div>
               )}
 
+              {uploadStatus === 'error' && (
+                <div className="text-sm text-red-400">{errorMessage}</div>
+              )}
+
               {/* 开始扫描按钮 */}
               <button
                 onClick={handleStartScan}
+                aria-label="开始3D扫描"
                 disabled={isScanning || uploadedFiles.length === 0}
                 className="w-full px-6 py-4 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 disabled:from-gray-600 disabled:to-gray-600 text-white rounded-lg font-medium transition-all duration-300 disabled:cursor-not-allowed"
               >
@@ -260,12 +319,14 @@ export default function ScanPage() {
                 <a
                   href={modelUrl}
                   download
+                  aria-label="下载生成的3D模型"
                   className="flex-1 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium text-center transition-colors"
                 >
                   下载模型
                 </a>
                 <button
                   onClick={resetScan}
+                  aria-label="重新扫描"
                   className="flex-1 px-6 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-medium transition-colors"
                 >
                   重新扫描
