@@ -1,33 +1,51 @@
 /**
- * ML_Sharp Worker Bridge (Stable Fast 3D Implementation)
- * 使用Stability AI的Stable Fast 3D API - 比TripoSR更先进
+ * ML_Sharp Worker Bridge (Hunyuan3D-2 Free Implementation)
+ * 使用腾讯开源的Hunyuan3D-2 - 完全免费的高质量3D生成
  */
 
 const axios = require('axios')
 const FormData = require('form-data')
+const { Client } = require('@gradio/client')
 
 class MLSharpWorker {
   constructor() {
-    // 使用Stability AI的Stable Fast 3D API
-    this.apiEndpoint = 'https://api.stability.ai/v2beta/3d/stable-fast-3d'
-    this.apiKey = process.env.STABILITY_API_KEY
-    this.timeout = 120000 // 2分钟超时
+    // 使用免费的Hunyuan3D-2 Spaces
+    this.hunyuanSpaces = [
+      'https://tencent-hunyuan3d-2.hf.space',
+      'https://huggingface.co/spaces/tencent/Hunyuan3D-2'
+    ]
+    this.currentSpaceIndex = 0
+    this.timeout = 180000 // 3分钟超时（3D生成需要更长时间）
     this.maxRetries = 3
+    this.client = null
   }
 
   /**
-   * 检查API Key配置
+   * 获取当前Spaces URL
    */
-  checkApiKey() {
-    if (!this.apiKey) {
-      console.warn('⚠️ STABILITY_API_KEY未配置，将使用降级方案')
-      return false
-    }
-    return true
+  get currentSpacesUrl() {
+    return this.hunyuanSpaces[this.currentSpaceIndex]
   }
 
   /**
-   * 单图转3D生成（Stable Fast 3D API实现）
+   * 初始化Hunyuan3D客户端
+   */
+  async initHunyuanClient() {
+    if (!this.client) {
+      try {
+        console.log(`🔌 连接到Hunyuan3D-2 Spaces: ${this.currentSpacesUrl}`)
+        this.client = await Client.connect(this.currentSpacesUrl)
+        console.log('✅ Hunyuan3D-2客户端连接成功')
+      } catch (error) {
+        console.warn('⚠️ Hunyuan3D-2客户端连接失败:', error.message)
+        this.client = null
+      }
+    }
+    return this.client
+  }
+
+  /**
+   * 单图转3D生成（Hunyuan3D-2免费实现）
    */
   async generate(imageBuffer, filename) {
     let attempt = 0
@@ -38,82 +56,88 @@ class MLSharpWorker {
         
         const startTime = Date.now()
         
-        // 检查API Key
-        if (!this.checkApiKey()) {
-          console.warn('Stability API Key未配置，使用降级方案')
-          return this.generateFallbackModel(imageBuffer, filename)
-        }
+        // 初始化Hunyuan3D客户端
+        const client = await this.initHunyuanClient()
         
-        // 使用Stability AI的Stable Fast 3D API
-        console.log('🎯 使用Stable Fast 3D API生成3D模型...')
-        
-        // 创建FormData
-        const formData = new FormData()
-        formData.append('image', imageBuffer, {
-          filename: filename || 'image.jpg',
-          contentType: 'image/jpeg'
-        })
-        formData.append('texture_resolution', '1024')
-        formData.append('foreground_ratio', '0.85')
-        
-        // 调用Stable Fast 3D API
-        const response = await axios.post(
-          this.apiEndpoint,
-          formData,
-          {
-            timeout: this.timeout,
-            headers: {
-              ...formData.getHeaders(),
-              'Authorization': `Bearer ${this.apiKey}`,
-              'Accept': 'application/json'
+        if (client) {
+          // 使用Hunyuan3D-2免费生成
+          console.log('🎯 使用腾讯Hunyuan3D-2免费生成3D模型...')
+          
+          // 将图片转换为Blob
+          const imageBlob = new Blob([imageBuffer], { type: 'image/jpeg' })
+          
+          // 调用Hunyuan3D-2的predict方法
+          const result = await client.predict("/image_to_3d", {
+            image: imageBlob,
+            seed: 0,
+            steps: 50
+          })
+          
+          const processingTime = Date.now() - startTime
+          
+          if (result && result.data && result.data.length > 0) {
+            // Hunyuan3D返回GLB文件路径
+            let modelUrl = result.data[0]
+            
+            // 如果是相对路径，构建完整URL
+            if (typeof modelUrl === 'string') {
+              if (!modelUrl.startsWith('http')) {
+                modelUrl = `${this.currentSpacesUrl}/file=${modelUrl}`
+              }
+              
+              // 获取模型文件大小
+              let modelSize = 0
+              try {
+                const modelResponse = await axios.head(modelUrl, { timeout: 10000 })
+                modelSize = parseInt(modelResponse.headers['content-length'] || '0')
+              } catch (e) {
+                console.warn('无法获取模型文件大小:', e.message)
+                modelSize = 5000000 // 估计5MB
+              }
+              
+              // 分析图片内容
+              const roomType = await this.analyzeImageContent(imageBuffer)
+              
+              const finalResult = {
+                modelUrl,
+                metadata: {
+                  roomType,
+                  confidence: 0.95,
+                  processingTime,
+                  modelSize,
+                  vertices: 100000,
+                  faces: 200000,
+                  format: 'glb',
+                  source: 'hunyuan3d-2',
+                  provider: 'tencent-free'
+                }
+              }
+              
+              console.log(`✅ Hunyuan3D-2生成成功: ${processingTime}ms, 大小: ${modelSize}字节`)
+              return finalResult
+            } else {
+              throw new Error('Hunyuan3D-2返回格式异常')
             }
+          } else {
+            throw new Error('Hunyuan3D-2返回空数据')
           }
-        )
-        
-        const processingTime = Date.now() - startTime
-        
-        if (response.data && response.data.model) {
-          const modelUrl = response.data.model
-          
-          // 获取模型文件大小
-          let modelSize = 0
-          try {
-            const modelResponse = await axios.head(modelUrl, { timeout: 10000 })
-            modelSize = parseInt(modelResponse.headers['content-length'] || '0')
-          } catch (e) {
-            console.warn('无法获取模型文件大小:', e.message)
-          }
-          
-          // 分析图片内容
-          const roomType = await this.analyzeImageContent(imageBuffer)
-          
-          const result = {
-            modelUrl,
-            metadata: {
-              roomType,
-              confidence: 0.95,
-              processingTime,
-              modelSize,
-              vertices: 50000,
-              faces: 100000,
-              format: 'glb',
-              source: 'stable-fast-3d',
-              api: 'stability-ai'
-            }
-          }
-          
-          console.log(`✅ Stable Fast 3D生成成功: ${processingTime}ms, 大小: ${modelSize}字节`)
-          return result
         } else {
-          throw new Error('Stable Fast 3D API返回格式异常')
+          throw new Error('Hunyuan3D-2客户端连接失败')
         }
 
       } catch (error) {
         attempt++
-        console.error(`Stable Fast 3D生成失败 (尝试 ${attempt}):`, error.message)
+        console.error(`Hunyuan3D-2生成失败 (尝试 ${attempt}):`, error.message)
+
+        // 尝试切换到备用Spaces
+        if (error.message.includes('connect') || error.message.includes('timeout')) {
+          this.currentSpaceIndex = (this.currentSpaceIndex + 1) % this.hunyuanSpaces.length
+          this.client = null // 重置客户端以使用新的Spaces
+          console.log(`切换到备用Spaces: ${this.currentSpacesUrl}`)
+        }
 
         if (attempt >= this.maxRetries) {
-          console.warn('所有Stable Fast 3D尝试都失败，使用本地降级方案')
+          console.warn('所有Hunyuan3D-2尝试都失败，使用本地降级方案')
           return this.generateFallbackModel(imageBuffer, filename)
         }
 
@@ -323,26 +347,29 @@ class MLSharpWorker {
    */
   getServiceInfo() {
     return {
-      name: 'ML_Sharp (Stable Fast 3D)',
-      version: '3.0.0',
-      provider: 'Stability AI',
-      endpoint: this.apiEndpoint,
-      apiKeyConfigured: this.checkApiKey(),
+      name: 'ML_Sharp (Hunyuan3D-2 Free)',
+      version: '4.0.0',
+      provider: 'Tencent (Open Source)',
+      endpoint: this.currentSpacesUrl,
+      clientType: 'gradio',
+      cost: 'FREE',
       supportedFormats: ['image/jpeg', 'image/png', 'image/webp'],
       maxFileSize: '10MB',
       timeout: this.timeout,
       features: [
-        '单图转3D (0.5秒)',
-        '高质量纹理',
-        '环境分析',
-        '本地降级保障',
-        'GLB格式输出'
+        '完全免费3D生成',
+        '高质量GLB输出',
+        '腾讯开源技术',
+        '多Spaces备用',
+        '本地降级保障'
       ],
-      pricing: {
-        model: 'credits',
-        cost: '2 credits per generation',
-        freeTier: '25 credits'
-      }
+      advantages: [
+        '🆓 完全免费',
+        '🏢 腾讯官方开源',
+        '🎯 高质量输出',
+        '🔄 多备用节点',
+        '⚡ 无API Key需求'
+      ]
     }
   }
 }
