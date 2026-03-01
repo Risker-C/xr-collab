@@ -10,19 +10,26 @@ const FormData = require('form-data')
 
 class MLSharpWorker {
   constructor() {
-    // 使用多个Hugging Face端点提高可用性
-    this.endpoints = [
-      'https://stabilityai-triposr.hf.space',
-      'https://tripo3d-triposr.hf.space',
-      'https://huggingface.co/spaces/stabilityai/TripoSR'
+    // 使用Hugging Face Inference API（更稳定）
+    this.useInferenceAPI = process.env.HF_API_KEY ? true : false
+    this.inferenceEndpoint = 'https://api-inference.huggingface.co/models/stabilityai/TripoSR'
+    
+    // Spaces端点（备用）
+    this.spacesEndpoints = [
+      'https://stabilityai-triposr.hf.space/api/predict',
+      'https://huggingface.co/spaces/stabilityai/TripoSR/api/predict'
     ]
+    
     this.currentEndpoint = 0
     this.timeout = 60000 // 1分钟超时
     this.maxRetries = 3
   }
 
   get apiEndpoint() {
-    return this.endpoints[this.currentEndpoint]
+    if (this.useInferenceAPI) {
+      return this.inferenceEndpoint
+    }
+    return this.spacesEndpoints[this.currentEndpoint]
   }
 
   /**
@@ -46,72 +53,105 @@ class MLSharpWorker {
         formData.append('mc_resolution', '256')
         formData.append('formats', 'glb')
 
-        // 调用TripoSR API
-        const response = await axios.post(
-          `${this.apiEndpoint}/api/predict`,
-          formData,
-          {
-            timeout: this.timeout,
-            headers: {
-              ...formData.getHeaders(),
-              'User-Agent': 'xr-collab-real/1.0'
-            },
-            responseType: 'json'
-          }
-        )
+        // 调用Hugging Face API
+        let response
+        if (this.useInferenceAPI) {
+          // 使用Inference API
+          response = await axios.post(
+            this.apiEndpoint,
+            imageBuffer,
+            {
+              timeout: this.timeout,
+              headers: {
+                'Authorization': `Bearer ${process.env.HF_API_KEY}`,
+                'Content-Type': 'image/jpeg',
+                'User-Agent': 'xr-collab-real/1.0'
+              },
+              responseType: 'arraybuffer'
+            }
+          )
+        } else {
+          // 使用Spaces API
+          response = await axios.post(
+            this.apiEndpoint,
+            formData,
+            {
+              timeout: this.timeout,
+              headers: {
+                ...formData.getHeaders(),
+                'User-Agent': 'xr-collab-real/1.0'
+              },
+              responseType: 'json'
+            }
+          )
+        }
 
         const processingTime = Date.now() - startTime
 
         // 解析响应
-        if (response.data && response.data.data && response.data.data[0]) {
-          const modelData = response.data.data[0]
-          
-          // 构建模型URL
-          let modelUrl = modelData
-          if (typeof modelData === 'string' && !modelData.startsWith('http')) {
-            modelUrl = `${this.apiEndpoint}/file=${modelData}`
+        let modelData, modelUrl
+        
+        if (this.useInferenceAPI) {
+          // Inference API返回二进制数据
+          if (response.data && response.data.byteLength > 0) {
+            // 创建临时URL（实际应该上传到R2）
+            modelUrl = `data:model/gltf-binary;base64,${Buffer.from(response.data).toString('base64')}`
+            modelData = response.data
+          } else {
+            throw new Error('Inference API返回空数据')
           }
+        } else {
+          // Spaces API返回JSON
+          if (response.data && response.data.data && response.data.data[0]) {
+            modelData = response.data.data[0]
+            modelUrl = modelData
+            if (typeof modelData === 'string' && !modelData.startsWith('http')) {
+              modelUrl = `${this.apiEndpoint.replace('/api/predict', '')}/file=${modelData}`
+            }
+          } else {
+            throw new Error('Spaces API返回格式异常')
+        }
 
-          // 下载模型文件获取实际大小
-          let modelSize = 0
+        // 下载模型文件获取实际大小
+        let modelSize = 0
+        if (!this.useInferenceAPI) {
           try {
             const modelResponse = await axios.head(modelUrl, { timeout: 10000 })
             modelSize = parseInt(modelResponse.headers['content-length'] || '0')
           } catch (e) {
             console.warn('无法获取模型文件大小:', e.message)
           }
-
-          // 分析图片内容
-          const roomType = await this.analyzeImageContent(imageBuffer)
-
-          const result = {
-            modelUrl,
-            metadata: {
-              roomType,
-              confidence: 0.85,
-              processingTime,
-              modelSize,
-              vertices: 10000,
-              faces: 20000,
-              format: 'glb',
-              source: 'triposr'
-            }
-          }
-
-          console.log(`ML_Sharp生成成功: ${processingTime}ms, 大小: ${modelSize}字节`)
-          return result
-
         } else {
-          throw new Error('API返回格式异常')
+          modelSize = modelData.byteLength
         }
+
+        // 分析图片内容
+        const roomType = await this.analyzeImageContent(imageBuffer)
+
+        const result = {
+          modelUrl,
+          metadata: {
+            roomType,
+            confidence: 0.85,
+            processingTime,
+            modelSize,
+            vertices: 10000,
+            faces: 20000,
+            format: 'glb',
+            source: this.useInferenceAPI ? 'hf-inference' : 'hf-spaces'
+          }
+        }
+
+        console.log(`ML_Sharp生成成功: ${processingTime}ms, 大小: ${modelSize}字节`)
+        return result
 
       } catch (error) {
         attempt++
         console.error(`ML_Sharp生成失败 (尝试 ${attempt}):`, error.message)
 
-        // 尝试切换到备用端点
-        if (error.response?.status >= 500 || error.code === 'ECONNABORTED') {
-          this.currentEndpoint = (this.currentEndpoint + 1) % this.endpoints.length
+        // 尝试切换到备用端点（仅对Spaces API）
+        if (!this.useInferenceAPI && (error.response?.status >= 500 || error.code === 'ECONNABORTED')) {
+          this.currentEndpoint = (this.currentEndpoint + 1) % this.spacesEndpoints.length
           console.log(`切换到备用端点: ${this.apiEndpoint}`)
         }
 
