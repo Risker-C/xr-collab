@@ -6,11 +6,17 @@
 const { getInstance: getRedisClient } = require('./redis-client');
 const { getInstance: getR2Client } = require('./r2-client');
 
+function normalizeUsername(username) {
+  return String(username || '').trim().toLowerCase();
+}
+
 class StorageAdapter {
   constructor() {
     this.redis = null;
     this.r2 = null;
     this.initialized = false;
+    this.memoryUsers = new Map();
+    this.memoryUsersByUsername = new Map();
   }
 
   async initialize() {
@@ -73,9 +79,15 @@ class StorageAdapter {
     return [];
   }
 
-  async setUser(userId, userData, ttl) {
+  async setUser(userId, userData, ttl = 3600) {
     if (this.redis) {
       return await this.redis.setUser(userId, userData, ttl);
+    }
+
+    const expiresAt = ttl ? Date.now() + ttl * 1000 : null;
+    this.memoryUsers.set(userId, { data: userData, expiresAt });
+    if (userData && userData.username) {
+      this.memoryUsersByUsername.set(normalizeUsername(userData.username), userId);
     }
   }
 
@@ -83,7 +95,26 @@ class StorageAdapter {
     if (this.redis) {
       return await this.redis.getUser(userId);
     }
-    return null;
+
+    const record = this.memoryUsers.get(userId);
+    if (!record) return null;
+    if (record.expiresAt && Date.now() > record.expiresAt) {
+      this.memoryUsers.delete(userId);
+      return null;
+    }
+    return record.data || null;
+  }
+
+  async getUserByUsername(username) {
+    if (this.redis) {
+      return await this.redis.getUserByUsername(username);
+    }
+
+    const normalized = normalizeUsername(username);
+    if (!normalized) return null;
+    const userId = this.memoryUsersByUsername.get(normalized);
+    if (!userId) return null;
+    return await this.getUser(userId);
   }
 
   async addChatMessage(roomId, message) {

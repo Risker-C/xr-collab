@@ -5,6 +5,11 @@
 
 const redis = require('redis');
 
+function normalizeUsername(username) {
+  return String(username || '').trim().toLowerCase();
+}
+
+
 class RedisClient {
   constructor() {
     this.client = null;
@@ -93,6 +98,11 @@ class RedisClient {
       ttl,
       JSON.stringify(userData)
     );
+
+    if (userData && userData.username) {
+      const normalized = normalizeUsername(userData.username);
+      await this.client.setEx(`user:username:${normalized}`, ttl, String(userId));
+    }
   }
 
   async getUser(userId) {
@@ -101,7 +111,21 @@ class RedisClient {
   }
 
   async deleteUser(userId) {
+    const existing = await this.getUser(userId);
+    if (existing && existing.username) {
+      const normalized = normalizeUsername(existing.username);
+      await this.client.del(`user:username:${normalized}`);
+    }
     await this.client.del(`user:${userId}`);
+  }
+
+  async getUserByUsername(username) {
+    const normalized = normalizeUsername(username);
+    if (!normalized) return null;
+
+    const userId = await this.client.get(`user:username:${normalized}`);
+    if (!userId) return null;
+    return await this.getUser(userId);
   }
 
   // Online users (Set)

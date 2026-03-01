@@ -11,11 +11,15 @@
 const fs = require('fs').promises;
 const path = require('path');
 const { createWriteStream, createReadStream } = require('fs');
+const readline = require('readline');
+const { getInstance: getStorageAdapter } = require('./storage/storage-adapter');
 
 class ScanManager {
   constructor(options = {}) {
     // scanId -> { id, roomId, userId, status, createdAt, pointCount, quality, metadata }
     this.scans = new Map();
+
+    this.storage = getStorageAdapter();
     
     // 配置
     this.config = {
@@ -60,6 +64,8 @@ class ScanManager {
       progress: 0, // 0-100
       area: 0, // 扫描面积（平方米）
       filePath: path.join(this.config.storageRoot, `${scanId}.jsonl`), // 点云数据文件路径
+      storageKey: null,
+      storageProvider: 'local',
       metadata: {
         deviceType: options.deviceType || 'unknown',
         scannerType: options.scannerType || 'photogrammetry', // lidar, photogrammetry, depth
@@ -188,27 +194,57 @@ class ScanManager {
       frameEnd = null
     } = options;
 
-    try {
-      const fileContent = await fs.readFile(session.filePath, 'utf8');
-      const lines = fileContent.trim().split('\n').filter(line => line);
-      
-      let frames = lines.map(line => JSON.parse(line));
-      
-      // 按帧范围过滤
-      if (frameEnd !== null) {
-        frames = frames.slice(frameStart, frameEnd + 1);
-      } else if (frameStart > 0) {
-        frames = frames.slice(frameStart);
+    const readStream = async () => {
+      if (session.storageKey && this.storage?.r2) {
+        const result = await this.storage.getFile(session.storageKey);
+        if (!result?.success) {
+          throw new Error(result?.error || '点云数据文件不存在');
+        }
+        return result.body;
       }
 
-      // 分页
-      const startIndex = page * pageSize;
-      const endIndex = startIndex + pageSize;
-      const pagedFrames = frames.slice(startIndex, endIndex);
+      return createReadStream(session.filePath, { encoding: 'utf8' });
+    };
 
-      // 提取点云数据
+    try {
+      const stream = await readStream();
+      const rl = readline.createInterface({
+        input: stream,
+        crlfDelay: Infinity
+      });
+
+      const frames = [];
+      let filteredCount = 0;
+      let lineIndex = 0;
+      const startIndex = Math.max(0, page * pageSize);
+      const endIndex = startIndex + pageSize;
+
+      for await (const line of rl) {
+        if (!line) continue;
+        const trimmed = String(line).trim();
+        if (!trimmed) continue;
+
+        const frame = JSON.parse(trimmed);
+
+        if (lineIndex < frameStart) {
+          lineIndex += 1;
+          continue;
+        }
+
+        if (frameEnd !== null && lineIndex > frameEnd) {
+          break;
+        }
+
+        if (filteredCount >= startIndex && filteredCount < endIndex) {
+          frames.push(frame);
+        }
+
+        filteredCount += 1;
+        lineIndex += 1;
+      }
+
       const points = [];
-      pagedFrames.forEach(frame => {
+      frames.forEach((frame) => {
         if (frame.points && Array.isArray(frame.points)) {
           points.push(...frame.points);
         }
@@ -216,7 +252,7 @@ class ScanManager {
 
       return {
         points,
-        frames: pagedFrames.map(f => ({
+        frames: frames.map(f => ({
           timestamp: f.timestamp,
           frameIndex: f.frameIndex,
           pointCount: f.pointCount,
@@ -225,8 +261,8 @@ class ScanManager {
         pagination: {
           page,
           pageSize,
-          totalFrames: frames.length,
-          hasMore: endIndex < frames.length
+          totalFrames: filteredCount,
+          hasMore: endIndex < filteredCount
         }
       };
 
@@ -248,6 +284,22 @@ class ScanManager {
     if (session) {
       // 可以在这里触发后处理任务（如点云优化、模型生成等）
       console.log(`扫描完成: ${scanId}, 总点数: ${session.pointCount}, 总帧数: ${session.frameCount}`);
+
+      if (this.storage?.r2) {
+        try {
+          const upload = await this.storage.uploadPointCloud(
+            scanId,
+            `${scanId}.jsonl`,
+            createReadStream(session.filePath)
+          );
+
+          session.storageKey = upload.key;
+          session.storageProvider = 'r2';
+          this.scans.set(scanId, session);
+        } catch (error) {
+          console.error('上传点云数据到R2失败:', error);
+        }
+      }
     }
 
     return session;
@@ -259,6 +311,14 @@ class ScanManager {
   async deleteSession(scanId) {
     const session = this.scans.get(scanId);
     if (!session) return false;
+
+    if (session.storageProvider === 'r2' && session.storageKey && this.storage?.r2) {
+      try {
+        await this.storage.deleteFile(session.storageKey);
+      } catch (error) {
+        console.warn('删除R2点云数据失败:', error);
+      }
+    }
 
     try {
       // 删除点云数据文件
@@ -275,6 +335,18 @@ class ScanManager {
   /**
    * 获取所有扫描会话（不包含点云数据）
    */
+  getRoomScans(roomId) {
+    return this.getAllSessions(roomId);
+  }
+
+  async getPointCloud(scanId, options = {}) {
+    const limit = Number.isFinite(Number(options.limit)) ? Number(options.limit) : 50000;
+    const offset = Number.isFinite(Number(options.offset)) ? Number(options.offset) : 0;
+    const pageSize = Math.max(1, limit);
+    const page = Math.floor(offset / pageSize);
+    return await this.getPointCloudData(scanId, { page, pageSize });
+  }
+
   getAllSessions(roomId = null) {
     const sessions = Array.from(this.scans.values());
     

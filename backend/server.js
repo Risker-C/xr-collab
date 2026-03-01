@@ -6,13 +6,22 @@ const path = require("path");
 const socketIO = require("socket.io");
 const cors = require("cors");
 const jwt = require("jsonwebtoken");
+const throttle = require("lodash.throttle");
+const cookieParser = require("cookie-parser");
+const csrf = require("csurf");
+const crypto = require("crypto");
 
 // Load environment variables
 require('dotenv').config({ path: '.env.credentials' });
 
 const { generateToken, requireHttpAuth } = require("./auth");
+const { requireAuth, requireRoomMember, requireFileAccess, requireRoomOwner } = require("./middleware/auth");
 const { asyncHandler, notFoundHandler, errorHandler } = require("./middleware");
+const sanitizeMiddleware = require("./middleware/sanitize");
+const { validateSchema } = require("./middleware/validate-schema");
+const { roomCreateSchema, fileUploadSchema } = require("./validators/schemas");
 const RoomManager = require("./rooms");
+const AuthService = require("./auth-service");
 const WorkerBridge = require("./worker-bridge");
 const RedisStore = require("./redis-store");
 const FileManager = require("./file-manager");
@@ -29,6 +38,8 @@ const storage = getStorageAdapter();
 
 const app = express();
 const server = http.createServer(app);
+
+app.set('trust proxy', true);
 
 // CORS白名单配置
 const allowedOrigins = process.env.ALLOWED_ORIGINS 
@@ -92,7 +103,10 @@ app.use(cors({
   credentials: true
 }));
 
+app.use(cookieParser());
 app.use(express.json({ limit: '10mb' })); // 限制JSON body大小
+app.use(express.urlencoded({ extended: true }));
+app.use(sanitizeMiddleware);
 app.use(express.static("public"));
 
 const ScanManager = require("./scan-manager");
@@ -103,6 +117,8 @@ const redis = new RedisStore();
 const roomManager = new RoomManager(redis);
 const workerBridge = new WorkerBridge();
 const scanManager = new ScanManager();
+const authService = new AuthService();
+
 const fileManager = new FileManager({
   storageRoot: process.env.FILE_STORAGE_PATH || path.join(process.cwd(), "backend", "storage"),
   publicBaseUrl: process.env.PUBLIC_BASE_URL || "",
@@ -114,6 +130,21 @@ app.use('/api/auth', rateLimitPresets.strict);        // 认证接口严格限�
 app.use('/api/rooms', rateLimitPresets.standard);     // 房间操作标准限制  
 app.use('/api/files/upload', rateLimitPresets.upload); // 文件上传限制
 app.use('/api/scan', rateLimitPresets.standard);      // 扫描接口标准限制
+
+
+const csrfProtection = csrf({
+  cookie: {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production'
+  }
+});
+
+app.use('/api', csrfProtection);
+
+app.get('/api/csrf-token', (req, res) => {
+  res.json({ csrfToken: req.csrfToken() });
+});
 
 const operationLogs = new OperationLogManager({
   maxSteps: 100,
@@ -563,21 +594,25 @@ const kiriRoutes = require("./routes/kiri");
 app.use("/api/kiri", kiriRoutes);
 
 // Auth endpoints
-app.post("/api/auth/login", (req, res) => {
-  const { username } = req.body;
-  if (!username) return res.status(400).json({ error: "Username required" });
+app.post("/api/auth/register", asyncHandler(async (req, res) => {
+  const { username, password, email } = req.body || {};
+  const user = await authService.register(username, password, email);
+  const token = generateToken(user.id, user.username);
+  res.json({ token, user });
+}));
 
-  const userId = `user_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
-  const token = generateToken(userId, username);
-  res.json({ token, userId, username });
-});
+app.post("/api/auth/login", asyncHandler(async (req, res) => {
+  const { username, password } = req.body || {};
+  const result = await authService.login(username, password);
+  res.json(result);
+}));
 
 // Room endpoints
 app.get("/api/rooms", (req, res) => {
   res.json(roomManager.getRoomList(false));
 });
 
-app.post("/api/rooms", async (req, res) => {
+app.post("/api/rooms", validateSchema(roomCreateSchema), async (req, res) => {
   const { roomId, name, password, maxUsers, persistent, isPublic, visibility } =
     req.body || {};
 
@@ -668,8 +703,24 @@ app.post("/api/files/upload", (req, res) => {
     }
 
     try {
-      const uploaderId = String(req.body.uploaderId || "unknown");
-      const uploaderName = String(req.body.uploaderName || "用户");
+      sanitizeMiddleware(req, res, () => {});
+
+      const derivedUploaderId = req.user?.userId
+        || req.body.uploaderId
+        || (crypto.randomUUID ? crypto.randomUUID() : `user_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`);
+      const derivedUploaderName = req.user?.username || req.body.uploaderName || "用户";
+
+      const parsed = fileUploadSchema.safeParse({
+        roomId: roomId,
+        uploaderId: derivedUploaderId,
+        uploaderName: derivedUploaderName
+      });
+      if (!parsed.success) {
+        throw new Error("Invalid upload metadata");
+      }
+
+      const uploaderId = String(parsed.data.uploaderId);
+      const uploaderName = String(parsed.data.uploaderName);
 
       const fileMeta = await fileManager.saveUpload({
         roomId,

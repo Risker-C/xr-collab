@@ -3,6 +3,7 @@ const fs = require("fs");
 const fsp = require("fs/promises");
 const path = require("path");
 const sharp = require("sharp");
+const { getInstance: getStorageAdapter } = require("./storage/storage-adapter");
 
 const IMAGE_MIME_TYPES = new Set(["image/png", "image/jpeg"]);
 const PDF_MIME_TYPE = "application/pdf";
@@ -48,6 +49,8 @@ class FileManager {
 
     this.publicBaseUrl = normalizeBaseUrl(options.publicBaseUrl || "");
     this.cdnBaseUrl = normalizeBaseUrl(options.cdnBaseUrl || "");
+
+    this.storage = getStorageAdapter();
 
     this.files = new Map();
     this.filesByRoom = new Map();
@@ -168,45 +171,117 @@ class FileManager {
     const now = Date.now();
     const type = this.detectFileType(mimeType);
     const extension = this.extensionForMime(mimeType);
+    const sanitizedName = sanitizeName(originalName) || `${fileId}${extension}`;
 
-    const originalDiskName = `${fileId}${extension}`;
-    const originalPath = path.join(this.originalDir, originalDiskName);
-    await fsp.rename(tempPath, originalPath);
-
+    let storageProvider = this.storage?.r2 ? "r2" : "local";
+    let originalKey = null;
+    let optimizedKey = null;
+    let thumbnailKey = null;
+    let originalDiskName = null;
     let optimizedDiskName = null;
     let thumbnailDiskName = null;
     let dimensions = null;
 
-    if (type === "image") {
-      optimizedDiskName = `${fileId}-optimized.webp`;
-      thumbnailDiskName = `${fileId}-thumb.webp`;
+    if (storageProvider === "r2") {
+      try {
+        const fileBuffer = await fsp.readFile(tempPath);
 
-      const optimizedPath = path.join(this.optimizedDir, optimizedDiskName);
-      const thumbnailPath = path.join(this.thumbnailDir, thumbnailDiskName);
+        if (type === "image") {
+          const imageMetadata = await sharp(fileBuffer).metadata();
+          dimensions = {
+            width: imageMetadata.width || null,
+            height: imageMetadata.height || null
+          };
+        }
 
-      const metadata = await sharp(originalPath).metadata();
-      dimensions = {
-        width: metadata.width || null,
-        height: metadata.height || null
-      };
+        const originalUpload = await this.storage.uploadFile({
+          roomId: normalizedRoomId,
+          fileId,
+          filename: sanitizedName,
+          body: fileBuffer,
+          contentType: mimeType
+        });
 
-      await sharp(originalPath)
-        .rotate()
-        .resize({ width: 1920, withoutEnlargement: true })
-        .webp({ quality: 84 })
-        .toFile(optimizedPath);
+        originalKey = originalUpload.key;
 
-      await sharp(originalPath)
-        .rotate()
-        .resize({ width: 512, height: 512, fit: "inside", withoutEnlargement: true })
-        .webp({ quality: 70 })
-        .toFile(thumbnailPath);
+        if (type === "image") {
+          const optimizedBuffer = await sharp(fileBuffer)
+            .rotate()
+            .resize({ width: 1920, withoutEnlargement: true })
+            .webp({ quality: 84 })
+            .toBuffer();
+
+          const thumbnailBuffer = await sharp(fileBuffer)
+            .rotate()
+            .resize({ width: 512, height: 512, fit: "inside", withoutEnlargement: true })
+            .webp({ quality: 70 })
+            .toBuffer();
+
+          const optimizedUpload = await this.storage.uploadFile({
+            roomId: normalizedRoomId,
+            fileId,
+            filename: `${fileId}-optimized.webp`,
+            body: optimizedBuffer,
+            contentType: "image/webp",
+            metadata: { variant: "optimized" }
+          });
+
+          const thumbnailUpload = await this.storage.uploadFile({
+            roomId: normalizedRoomId,
+            fileId,
+            filename: `${fileId}-thumbnail.webp`,
+            body: thumbnailBuffer,
+            contentType: "image/webp",
+            metadata: { variant: "thumbnail" }
+          });
+
+          optimizedKey = optimizedUpload.key;
+          thumbnailKey = thumbnailUpload.key;
+        }
+
+        await fsp.unlink(tempPath);
+      } catch (error) {
+        console.error("R2 upload failed, falling back to local storage:", error);
+        storageProvider = "local";
+      }
+    }
+
+    if (storageProvider === "local") {
+      originalDiskName = `${fileId}${extension}`;
+      const originalPath = path.join(this.originalDir, originalDiskName);
+      await fsp.rename(tempPath, originalPath);
+
+      if (type === "image") {
+        optimizedDiskName = `${fileId}-optimized.webp`;
+        thumbnailDiskName = `${fileId}-thumb.webp`;
+
+        const optimizedPath = path.join(this.optimizedDir, optimizedDiskName);
+        const thumbnailPath = path.join(this.thumbnailDir, thumbnailDiskName);
+
+        const metadata = await sharp(originalPath).metadata();
+        dimensions = {
+          width: metadata.width || null,
+          height: metadata.height || null
+        };
+
+        await sharp(originalPath)
+          .rotate()
+          .resize({ width: 1920, withoutEnlargement: true })
+          .webp({ quality: 84 })
+          .toFile(optimizedPath);
+
+        await sharp(originalPath)
+          .rotate()
+          .resize({ width: 512, height: 512, fit: "inside", withoutEnlargement: true })
+          .webp({ quality: 70 })
+          .toFile(thumbnailPath);
+      }
     }
 
     const metadata = {
       id: fileId,
       roomId: normalizedRoomId,
-      originalName: sanitizeName(originalName),
+      originalName: sanitizedName,
       mimeType,
       type,
       size: Number(size || 0),
@@ -215,16 +290,22 @@ class FileManager {
       createdAt: now,
       dimensions,
       storage: {
+        provider: storageProvider,
+        originalKey,
+        optimizedKey,
+        thumbnailKey,
         originalDiskName,
         optimizedDiskName,
         thumbnailDiskName
       },
+      storagePath: originalKey || originalDiskName,
+      publicUrl: originalKey ? this.storage.getPublicUrl(originalKey) : null,
       urls: {
         content: this.buildPublicUrl(`/api/files/${fileId}/content`),
-        optimized: optimizedDiskName
+        optimized: (storageProvider === "r2" ? optimizedKey : optimizedDiskName)
           ? this.buildPublicUrl(`/api/files/${fileId}/optimized`)
           : this.buildPublicUrl(`/api/files/${fileId}/content`),
-        thumbnail: thumbnailDiskName
+        thumbnail: (storageProvider === "r2" ? thumbnailKey : thumbnailDiskName)
           ? this.buildPublicUrl(`/api/files/${fileId}/thumbnail`)
           : null
       },
@@ -265,29 +346,50 @@ class FileManager {
     const metadata = this.files.get(String(fileId || ""));
     if (!metadata) return null;
 
-    const deleteTargets = [
-      metadata.storage?.originalDiskName
-        ? path.join(this.originalDir, metadata.storage.originalDiskName)
-        : null,
-      metadata.storage?.optimizedDiskName
-        ? path.join(this.optimizedDir, metadata.storage.optimizedDiskName)
-        : null,
-      metadata.storage?.thumbnailDiskName
-        ? path.join(this.thumbnailDir, metadata.storage.thumbnailDiskName)
-        : null
-    ].filter(Boolean);
+    const storageMeta = metadata.storage || {};
+    const useR2 = storageMeta.provider === "r2" || Boolean(storageMeta.originalKey);
 
-    await Promise.all(
-      deleteTargets.map(async (targetPath) => {
-        try {
-          await fsp.unlink(targetPath);
-        } catch (error) {
-          if (error.code !== "ENOENT") {
-            throw error;
+    if (useR2) {
+      const keys = [
+        storageMeta.originalKey,
+        storageMeta.optimizedKey,
+        storageMeta.thumbnailKey
+      ].filter(Boolean);
+
+      await Promise.all(
+        keys.map(async (key) => {
+          try {
+            await this.storage.deleteFile(key);
+          } catch (error) {
+            console.warn("Failed to delete R2 file:", key, error);
           }
-        }
-      })
-    );
+        })
+      );
+    } else {
+      const deleteTargets = [
+        storageMeta.originalDiskName
+          ? path.join(this.originalDir, storageMeta.originalDiskName)
+          : null,
+        storageMeta.optimizedDiskName
+          ? path.join(this.optimizedDir, storageMeta.optimizedDiskName)
+          : null,
+        storageMeta.thumbnailDiskName
+          ? path.join(this.thumbnailDir, storageMeta.thumbnailDiskName)
+          : null
+      ].filter(Boolean);
+
+      await Promise.all(
+        deleteTargets.map(async (targetPath) => {
+          try {
+            await fsp.unlink(targetPath);
+          } catch (error) {
+            if (error.code !== "ENOENT") {
+              throw error;
+            }
+          }
+        })
+      );
+    }
 
     this.files.delete(metadata.id);
 
@@ -312,26 +414,73 @@ class FileManager {
     const metadata = this.files.get(String(fileId || ""));
     if (!metadata) return null;
 
-    if (variant === "thumbnail" && metadata.storage?.thumbnailDiskName) {
+    const storageMeta = metadata.storage || {};
+    const useR2 = storageMeta.provider === "r2" || Boolean(storageMeta.originalKey);
+
+    if (useR2) {
+      let key = storageMeta.originalKey;
+      let contentType = metadata.mimeType;
+
+      if (variant === "thumbnail" && storageMeta.thumbnailKey) {
+        key = storageMeta.thumbnailKey;
+        contentType = "image/webp";
+      } else if (variant === "optimized" && storageMeta.optimizedKey) {
+        key = storageMeta.optimizedKey;
+        contentType = "image/webp";
+      }
+
+      if (!key) return null;
+
       return {
-        path: path.join(this.thumbnailDir, metadata.storage.thumbnailDiskName),
+        storage: "r2",
+        key,
+        contentType,
+        metadata
+      };
+    }
+
+    if (variant === "thumbnail" && storageMeta.thumbnailDiskName) {
+      return {
+        path: path.join(this.thumbnailDir, storageMeta.thumbnailDiskName),
         contentType: "image/webp",
         metadata
       };
     }
 
-    if (variant === "optimized" && metadata.storage?.optimizedDiskName) {
+    if (variant === "optimized" && storageMeta.optimizedDiskName) {
       return {
-        path: path.join(this.optimizedDir, metadata.storage.optimizedDiskName),
+        path: path.join(this.optimizedDir, storageMeta.optimizedDiskName),
         contentType: "image/webp",
         metadata
       };
     }
 
     return {
-      path: path.join(this.originalDir, metadata.storage.originalDiskName),
+      path: path.join(this.originalDir, storageMeta.originalDiskName),
       contentType: metadata.mimeType,
       metadata
+    };
+  }
+
+  async getFileContent(fileId, variant = "content") {
+    const target = this.getVariantPath(fileId, variant);
+    if (!target) return null;
+
+    if (target.storage === "r2") {
+      const result = await this.storage.getFile(target.key);
+      if (!result?.success) return null;
+      return {
+        stream: result.body,
+        contentType: result.contentType || target.contentType,
+        contentLength: result.contentLength,
+        metadata: target.metadata
+      };
+    }
+
+    return {
+      stream: fs.createReadStream(target.path),
+      contentType: target.contentType,
+      metadata: target.metadata
     };
   }
 

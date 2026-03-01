@@ -1,3 +1,14 @@
+function getRealIP(req) {
+  if (req.headers['cf-connecting-ip']) {
+    return req.headers['cf-connecting-ip'];
+  }
+  const forwarded = req.headers['x-forwarded-for'];
+  if (forwarded) {
+    return forwarded.split(',')[0].trim();
+  }
+  return req.ip;
+}
+
 /**
  * Rate Limiting Middleware
  * API速率限制中间件
@@ -80,19 +91,7 @@ class RateLimiter {
    * 获取限流key（默认使用IP地址）
    */
   getKey(req) {
-    // 优先使用X-Forwarded-For（代理后的真实IP）
-    const forwarded = req.headers['x-forwarded-for']
-    if (forwarded) {
-      return forwarded.split(',')[0].trim()
-    }
-    
-    // 使用X-Real-IP
-    if (req.headers['x-real-ip']) {
-      return req.headers['x-real-ip']
-    }
-    
-    // 使用连接的远程地址
-    return req.connection.remoteAddress || req.socket.remoteAddress
+    return getRealIP(req)
   }
 
   /**

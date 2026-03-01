@@ -4,6 +4,10 @@ function errorHandler(err, req, res, next) {
   logger.error('Error:', { error: err.message, stack: err.stack, path: req.path });
   
   if (res.headersSent) return next(err);
+  if (err.code === 'EBADCSRFTOKEN') {
+    return res.status(403).json({ error: 'Invalid CSRF token' });
+  }
+
   
   const status = err.status || 500;
   res.status(status).json({

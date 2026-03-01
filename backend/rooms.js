@@ -1,4 +1,6 @@
-const crypto = require("crypto");
+const bcrypt = require("bcrypt");
+
+const ROOM_PASSWORD_MIN_LENGTH = 8;
 const { getInstance: getStorageAdapter } = require("./storage/storage-adapter");
 
 const ROOM_ID_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -37,9 +39,23 @@ class RoomManager {
     return roomId;
   }
 
-  hashPassword(password) {
+  validatePasswordStrength(password) {
+    if (!password) return;
+    const value = String(password);
+    if (value.length < ROOM_PASSWORD_MIN_LENGTH) {
+      throw new Error(`Room password must be at least ${ROOM_PASSWORD_MIN_LENGTH} characters`);
+    }
+    const hasLetter = /[A-Za-z]/.test(value);
+    const hasNumber = /\d/.test(value);
+    if (!hasLetter || !hasNumber) {
+      throw new Error('Room password must include letters and numbers');
+    }
+  }
+
+  async hashPassword(password) {
     if (!password) return null;
-    return crypto.createHash("sha256").update(String(password)).digest("hex");
+    const salt = await bcrypt.genSalt(10);
+    return bcrypt.hash(String(password), salt);
   }
 
   serializeRoom(room) {
@@ -153,11 +169,13 @@ class RoomManager {
       throw new Error("Room already exists");
     }
 
+    this.validatePasswordStrength(options.password);
+
     const room = {
       id: roomId,
       name: String(options.name || `Room ${roomId}`),
       isPublic: options.isPublic !== false,
-      passwordHash: this.hashPassword(options.password),
+      passwordHash: await this.hashPassword(options.password),
       users: new Map(),
       objects: [],
       whiteboards: [],
@@ -212,8 +230,8 @@ class RoomManager {
     if (!room) throw new Error("Room not found");
 
     if (room.passwordHash) {
-      const passwordHash = this.hashPassword(password);
-      if (passwordHash !== room.passwordHash) {
+      const valid = await bcrypt.compare(String(password || ''), room.passwordHash);
+      if (!valid) {
         throw new Error("Invalid room password");
       }
     }
@@ -268,14 +286,41 @@ class RoomManager {
 
     if (room.users.size === 0 && !room.persistent) {
       this.rooms.delete(room.id);
-      if (this.redis) {
-        await this.redis.del(`room:${room.id}`);
+      try {
+        await this.storage.deleteRoom(room.id);
+      } catch (error) {
+        console.error('Failed to delete room from storage:', error);
+        if (this.redis) {
+          await this.redis.del(`room:${room.id}`);
+        }
       }
       return;
     }
 
     await this.persistRoom(room);
   }
+
+  async deleteRoom(roomId) {
+    const normalizedRoomId = this.normalizeRoomId(roomId);
+    if (!normalizedRoomId) return null;
+
+    const room = await this.getRoom(normalizedRoomId);
+    if (!room) return null;
+
+    this.rooms.delete(normalizedRoomId);
+
+    try {
+      await this.storage.deleteRoom(normalizedRoomId);
+    } catch (error) {
+      console.error('Failed to delete room from storage:', error);
+      if (this.redis) {
+        await this.redis.del(`room:${normalizedRoomId}`);
+      }
+    }
+
+    return room;
+  }
+
 
   async getObject(roomId, objectId) {
     const room = await this.getRoom(roomId);
@@ -375,23 +420,20 @@ class RoomManager {
     return this.updateObject(roomId, objectId, { position }, actorId);
   }
 
-  getRoomUsers(roomId) {
-    const normalizedRoomId = this.normalizeRoomId(roomId);
-    const room = this.rooms.get(normalizedRoomId);
+  async getRoomUsers(roomId) {
+    const room = await this.getRoom(roomId);
     if (!room) return [];
     return Array.from(room.users.values());
   }
 
-  getRoomObjects(roomId) {
-    const normalizedRoomId = this.normalizeRoomId(roomId);
-    const room = this.rooms.get(normalizedRoomId);
+  async getRoomObjects(roomId) {
+    const room = await this.getRoom(roomId);
     if (!room) return [];
     return deepClone(room.objects);
   }
 
-  getRoomWhiteboards(roomId) {
-    const normalizedRoomId = this.normalizeRoomId(roomId);
-    const room = this.rooms.get(normalizedRoomId);
+  async getRoomWhiteboards(roomId) {
+    const room = await this.getRoom(roomId);
     if (!room) return [];
     return deepClone(room.whiteboards || []);
   }
@@ -605,8 +647,29 @@ class RoomManager {
     return deepClone(removed);
   }
 
-  getRoomList(includePrivate = false) {
-    return Array.from(this.rooms.values())
+  async getRoomList(includePrivate = false) {
+    const roomsById = new Map();
+
+    this.rooms.forEach((room, roomId) => {
+      roomsById.set(roomId, room);
+    });
+
+    try {
+      const storedRooms = await this.storage.getAllRooms();
+      if (Array.isArray(storedRooms)) {
+        storedRooms.forEach((raw) => {
+          const hydrated = this.hydrateRoom(raw);
+          if (hydrated && !roomsById.has(hydrated.id)) {
+            roomsById.set(hydrated.id, hydrated);
+            this.rooms.set(hydrated.id, hydrated);
+          }
+        });
+      }
+    } catch (error) {
+      console.error('Failed to load rooms from storage:', error);
+    }
+
+    return Array.from(roomsById.values())
       .filter((room) => includePrivate || room.isPublic)
       .sort((a, b) => b.created - a.created)
       .map((room) => this.getRoomSummary(room));

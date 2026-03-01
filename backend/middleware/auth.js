@@ -20,16 +20,24 @@ const requireAuth = async (req, res, next) => {
 
     const token = authHeader.substring(7);
     const decoded = jwt.verify(token, JWT_SECRET);
-    
-    // 从存储中获取用户信息
-    const storage = getStorageAdapter();
-    const user = await storage.getUser(decoded.userId);
-    
-    if (!user) {
-      return res.status(401).json({ error: 'User not found' });
-    }
 
-    req.user = user;
+    const storage = getStorageAdapter();
+    const storedUser = await storage.getUser(decoded.userId);
+
+    const normalizedUser = storedUser
+      ? {
+          ...storedUser,
+          id: storedUser.id || storedUser.userId || decoded.userId,
+          userId: storedUser.userId || storedUser.id || decoded.userId,
+          username: storedUser.username || decoded.username
+        }
+      : {
+          id: decoded.userId,
+          userId: decoded.userId,
+          username: decoded.username
+        };
+
+    req.user = normalizedUser;
     next();
   } catch (error) {
     if (error.name === 'JsonWebTokenError') {
@@ -49,7 +57,7 @@ const requireAuth = async (req, res, next) => {
 const requireRoomMember = async (req, res, next) => {
   try {
     const roomId = req.params.roomId || req.body.roomId;
-    const userId = req.user?.id;
+    const userId = req.user?.userId || req.user?.id;
 
     if (!roomId) {
       return res.status(400).json({ error: 'Room ID required' });
@@ -60,16 +68,26 @@ const requireRoomMember = async (req, res, next) => {
     }
 
     const storage = getStorageAdapter();
-    const room = await storage.getRoom(roomId);
-    
+    let room = await storage.getRoom(roomId);
+
+    if (!room && req.app?.locals?.roomManager) {
+      room = await req.app.locals.roomManager.getRoom(roomId);
+    }
+
     if (!room) {
       return res.status(404).json({ error: 'Room not found' });
     }
 
-    // 检查用户是否是房间成员
-    const isMember = room.users && room.users.some(u => u.id === userId);
-    const isOwner = room.createdBy === userId;
-    
+    const users = Array.isArray(room.users)
+      ? room.users
+      : room.users instanceof Map
+        ? Array.from(room.users.values())
+        : [];
+
+    const isMember = users.some((user) => String(user.userId || user.id) === String(userId));
+    const ownerId = room.ownerId || room.createdBy || null;
+    const isOwner = ownerId && String(ownerId) === String(userId);
+
     if (!isMember && !isOwner) {
       return res.status(403).json({ error: 'Access denied: Not a room member' });
     }
@@ -88,7 +106,7 @@ const requireRoomMember = async (req, res, next) => {
 const requireRoomOwner = async (req, res, next) => {
   try {
     const roomId = req.params.roomId || req.body.roomId;
-    const userId = req.user?.id;
+    const userId = req.user?.userId || req.user?.id;
 
     if (!roomId) {
       return res.status(400).json({ error: 'Room ID required' });
@@ -99,13 +117,18 @@ const requireRoomOwner = async (req, res, next) => {
     }
 
     const storage = getStorageAdapter();
-    const room = await storage.getRoom(roomId);
-    
+    let room = await storage.getRoom(roomId);
+
+    if (!room && req.app?.locals?.roomManager) {
+      room = await req.app.locals.roomManager.getRoom(roomId);
+    }
+
     if (!room) {
       return res.status(404).json({ error: 'Room not found' });
     }
 
-    if (room.createdBy !== userId) {
+    const ownerId = room.ownerId || room.createdBy || null;
+    if (!ownerId || String(ownerId) !== String(userId)) {
       return res.status(403).json({ error: 'Access denied: Room owner required' });
     }
 
@@ -126,13 +149,22 @@ const optionalAuth = async (req, res, next) => {
     if (authHeader && authHeader.startsWith('Bearer ')) {
       const token = authHeader.substring(7);
       const decoded = jwt.verify(token, JWT_SECRET);
-      
+
       const storage = getStorageAdapter();
-      const user = await storage.getUser(decoded.userId);
-      
-      if (user) {
-        req.user = user;
-      }
+      const storedUser = await storage.getUser(decoded.userId);
+
+      req.user = storedUser
+        ? {
+            ...storedUser,
+            id: storedUser.id || storedUser.userId || decoded.userId,
+            userId: storedUser.userId || storedUser.id || decoded.userId,
+            username: storedUser.username || decoded.username
+          }
+        : {
+            id: decoded.userId,
+            userId: decoded.userId,
+            username: decoded.username
+          };
     }
     next();
   } catch (error) {
@@ -154,27 +186,27 @@ const generateToken = (userId, expiresIn = '24h') => {
 const requireFileAccess = async (req, res, next) => {
   try {
     const fileId = req.params.fileId;
-    const userId = req.user?.id;
 
     if (!fileId) {
       return res.status(400).json({ error: 'File ID required' });
     }
 
-    // TODO: 从数据库获取文件信息和所属房间
-    // 这里需要实现文件元数据存储
-    // const file = await storage.getFile(fileId);
-    // const roomId = file.roomId;
-    
-    // 临时实现：从URL路径获取roomId
-    const roomId = req.params.roomId;
-    if (roomId) {
-      req.params.roomId = roomId;
-      return requireRoomMember(req, res, next);
+    const fileManager = req.app?.locals?.fileManager;
+    const fileMeta = fileManager?.getFile(fileId) || null;
+
+    if (!fileMeta) {
+      return res.status(404).json({ error: 'File not found' });
     }
 
-    // 如果没有roomId，暂时允许访问（需要后续完善）
-    console.warn(`File access without room check: ${fileId}`);
-    next();
+    const roomId = fileMeta.roomId || req.params.roomId || req.query.roomId;
+    if (!roomId) {
+      return res.status(400).json({ error: 'Room ID required for file access' });
+    }
+
+    req.params.roomId = roomId;
+    req.file = fileMeta;
+
+    return requireRoomMember(req, res, next);
   } catch (error) {
     console.error('File access middleware error:', error);
     return res.status(500).json({ error: 'File access authorization failed' });
