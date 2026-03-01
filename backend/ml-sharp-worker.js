@@ -68,18 +68,15 @@ class MLSharpWorker {
           // @gradio/client会自动处理Buffer
           
           // 调用Apple Sharp的/run_sharp API
-          // 参数：image_path, trajectory_type, output_long_side, num_frames, fps, render_video
-          const result = await client.predict(
-            imageBuffer,  // image_path - 直接传Buffer
+          // 正确的@gradio/client调用方式：predict(endpoint, parameters)
+          const result = await client.predict("/run_sharp", [
+            imageBuffer,       // image_path
             "rotate_forward",  // trajectory_type
-            "0",  // output_long_side (0=原始分辨率)
-            60,  // num_frames
-            30,  // fps
-            true,  // render_video
-            {
-              api_name: "/run_sharp"
-            }
-          )
+            0,                // output_long_side (数字类型，0=原始分辨率)
+            60,               // num_frames
+            30,               // fps
+            true              // render_video
+          ])
           
           const processingTime = Date.now() - startTime
           
