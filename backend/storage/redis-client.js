@@ -20,9 +20,14 @@ class RedisClient {
     if (this.isConnected) return;
 
     try {
+      const redisUrl = process.env.REDIS_URL;
+      const useTls = redisUrl?.startsWith('rediss://');
+      
       this.client = redis.createClient({
-        url: process.env.REDIS_URL,
+        url: redisUrl,
         socket: {
+          tls: useTls,
+          rejectUnauthorized: false, // Upstash requires this
           reconnectStrategy: (retries) => {
             if (retries > 10) {
               console.error('Redis reconnect failed after 10 attempts');
