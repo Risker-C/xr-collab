@@ -248,19 +248,19 @@ class R2Client {
    */
   async healthCheck() {
     try {
-      // 尝试列出bucket（权限检查）
-      const command = new HeadObjectCommand({
-        Bucket: this.bucketName,
-        Key: 'health-check-dummy'
+      // 使用 HeadBucket 更可靠（避免 ListBuckets 权限问题）
+      const { HeadBucketCommand } = require('@aws-sdk/client-s3');
+      const command = new HeadBucketCommand({
+        Bucket: this.bucketName
       });
 
-      // 这个调用会返回404，但证明连接正常
       await this.client.send(command);
       return { success: true, status: 'connected' };
     } catch (error) {
-      if (error.name === 'NoSuchKey') {
-        // 404是预期的，说明连接正常
-        return { success: true, status: 'connected' };
+      // 部分S3兼容实现会返回 NotFound/NoSuchKey/404
+      const status = error?.$metadata?.httpStatusCode;
+      if (error?.name === 'NotFound' || error?.name === 'NoSuchKey' || status === 404) {
+        return { success: false, error: 'Bucket not found' };
       }
       return { success: false, error: error.message };
     }
