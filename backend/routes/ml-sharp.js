@@ -37,10 +37,11 @@ const mlSharpWorker = new MLSharpWorker()
 
 /**
  * POST /api/ml-sharp/generate
+ * POST /api/ml-sharp/scan (别名)
  * 单图转3D生成
  * 应用严格的速率限制（10次/10分钟）+ 文件类型验证
  */
-router.post('/generate', rateLimitPresets.generation, upload.single('image'), validateFileType, async (req, res) => {
+const generateHandler = async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({
@@ -69,7 +70,42 @@ router.post('/generate', rateLimitPresets.generation, upload.single('image'), va
       error: error.message || '生成失败'
     })
   }
-})
+}
+
+const generateHandler = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        error: '请上传图片文件'
+      })
+    }
+
+    console.log(`开始处理图片: ${req.file.originalname}, 大小: ${req.file.size} bytes`)
+
+    const result = await mlSharpWorker.generate(
+      req.file.buffer,
+      req.file.originalname
+    )
+
+    console.log('生成成功:', result.metadata)
+
+    res.json({
+      success: true,
+      modelUrl: result.modelUrl,
+      metadata: result.metadata
+    })
+
+  } catch (error) {
+    console.error('生成失败:', error)
+    res.status(500).json({
+      error: error.message || '生成失败'
+    })
+  }
+}
+
+// 注册路由（支持 /generate 和 /scan 两个路径，以及 image 和 images 两种字段名）
+router.post('/generate', rateLimitPresets.generation, upload.single('image'), validateFileType, generateHandler)
+router.post('/scan', rateLimitPresets.generation, upload.single('images'), validateFileType, generateHandler)
 
 /**
  * POST /api/ml-sharp/analyze

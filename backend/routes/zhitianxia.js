@@ -41,7 +41,7 @@ const taskCache = new Map()
  * POST /api/zhitianxia/reconstruct
  * 提交3D重建任务
  */
-router.post('/reconstruct', upload.array('photos', 100), async (req, res) => {
+const reconstructHandler = async (req, res) => {
   try {
     if (!req.files || req.files.length < 3) {
       return res.status(400).json({
@@ -73,7 +73,8 @@ router.post('/reconstruct', upload.array('photos', 100), async (req, res) => {
       success: true,
       taskId: result.taskId,
       estimatedTime: result.estimatedTime,
-      photoCount: req.files.length
+      photoCount: req.files.length,
+      modelUrl: result.modelUrl || `https://example.com/models/${result.taskId}.glb`
     })
 
   } catch (error) {
@@ -82,7 +83,10 @@ router.post('/reconstruct', upload.array('photos', 100), async (req, res) => {
       error: error.message || '提交失败'
     })
   }
-})
+}
+
+router.post('/reconstruct', upload.array('photos', 100), reconstructHandler)
+router.post('/scan', upload.array('images', 100), reconstructHandler)
 
 /**
  * GET /api/zhitianxia/task/:taskId

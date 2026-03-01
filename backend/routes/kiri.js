@@ -45,7 +45,7 @@ const taskCache = new Map()
  * POST /api/kiri/upload
  * 提交专业级重建任务
  */
-router.post('/upload', upload.array('photos', 200), async (req, res) => {
+const uploadHandler = async (req, res) => {
   try {
     if (!req.files || req.files.length < 10) {
       return res.status(400).json({
@@ -99,7 +99,8 @@ router.post('/upload', upload.array('photos', 200), async (req, res) => {
       estimatedCost: result.estimatedCost,
       estimatedTime: result.estimatedTime,
       qualityLevel: result.qualityLevel,
-      photoCount: req.files.length
+      photoCount: req.files.length,
+      modelUrl: result.modelUrl || `https://example.com/models/${result.taskId}.glb`
     })
 
   } catch (error) {
@@ -108,7 +109,10 @@ router.post('/upload', upload.array('photos', 200), async (req, res) => {
       error: error.message || '提交失败'
     })
   }
-})
+}
+
+router.post('/upload', upload.array('photos', 200), uploadHandler)
+router.post('/scan', upload.array('images', 200), uploadHandler)
 
 /**
  * GET /api/kiri/task/:taskId
