@@ -25,21 +25,36 @@ class StorageAdapter {
     if (this.initialized) return;
 
     try {
-      // 初始化Redis
+      // 初始化Redis（失败则降级到内存存储，避免阻塞启动）
       if (process.env.REDIS_URL) {
-        this.redis = getRedisClient();
-        await this.redis.connect();
-        console.log('✅ Redis storage initialized');
+        try {
+          this.redis = getRedisClient();
+          await this.redis.connect();
+          console.log('✅ Redis storage initialized');
+        } catch (error) {
+          console.warn('⚠️  Redis connection failed, using memory storage');
+          console.warn(String(error && error.message ? error.message : error));
+          this.redis = null;
+        }
       } else {
         console.warn('⚠️  REDIS_URL not configured, using memory storage');
       }
 
-      // 初始化R2
+      // 初始化R2（失败则禁用R2，避免阻塞启动）
       if (process.env.R2_ACCESS_KEY_ID && process.env.R2_SECRET_ACCESS_KEY) {
-        this.r2 = getR2Client();
-        const health = await this.r2.healthCheck();
-        if (health.success) {
-          console.log('✅ R2 storage initialized');
+        try {
+          this.r2 = getR2Client();
+          const health = await this.r2.healthCheck();
+          if (health.success) {
+            console.log('✅ R2 storage initialized');
+          } else {
+            console.warn('⚠️  R2 health check failed, disabling R2');
+            this.r2 = null;
+          }
+        } catch (error) {
+          console.warn('⚠️  R2 initialization failed, disabling R2');
+          console.warn(String(error && error.message ? error.message : error));
+          this.r2 = null;
         }
       } else {
         console.warn('⚠️  R2 credentials not configured, using local storage');

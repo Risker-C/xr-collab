@@ -10,9 +10,17 @@ const throttle = require("lodash.throttle");
 const cookieParser = require("cookie-parser");
 const csrf = require("csurf");
 const crypto = require("crypto");
+const dotenv = require("dotenv");
 
-// Load environment variables
-require('dotenv').config({ path: '.env.credentials' });
+// Load environment variables (support running from repo root or backend dir)
+[
+  path.resolve(__dirname, ".env"),
+  path.resolve(__dirname, "..", ".env"),
+  path.resolve(__dirname, ".env.credentials"),
+  path.resolve(__dirname, "..", ".env.credentials")
+].forEach((envPath) => {
+  dotenv.config({ path: envPath });
+});
 
 const { generateToken, requireHttpAuth } = require("./auth");
 const { requireAuth, requireRoomMember, requireFileAccess, requireRoomOwner } = require("./middleware/auth");
@@ -140,11 +148,19 @@ const csrfProtection = csrf({
   }
 });
 
-app.use('/api', csrfProtection);
+// CSRF 默认关闭（前端当前未携带 token，会导致 POST/UPLOAD 失败）
+// 如需开启：设置 ENABLE_CSRF=true 并让前端请求 /api/csrf-token 后携带 x-csrf-token
+if (process.env.ENABLE_CSRF === 'true') {
+  app.use('/api', csrfProtection);
 
-app.get('/api/csrf-token', (req, res) => {
-  res.json({ csrfToken: req.csrfToken() });
-});
+  app.get('/api/csrf-token', (req, res) => {
+    res.json({ csrfToken: req.csrfToken(), enabled: true });
+  });
+} else {
+  app.get('/api/csrf-token', (req, res) => {
+    res.json({ csrfToken: null, enabled: false });
+  });
+}
 
 const operationLogs = new OperationLogManager({
   maxSteps: 100,
